@@ -1,0 +1,14 @@
+import { Route } from "@solidjs/router";
+import PresentationListPage from "./pages/PresentationListPage";
+import EditorPage from "./pages/EditorPage";
+import PresentPage from "./pages/PresentPage";
+
+export default function App() {
+  return (
+    <>
+      <Route path="/" component={PresentationListPage} />
+      <Route path="/slide/:id" component={EditorPage} />
+      <Route path="/slide/:id/present" component={PresentPage} />
+    </>
+  );
+}
