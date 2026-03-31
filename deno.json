@@ -16,7 +16,8 @@
     "@tailwindcss/vite": "npm:@tailwindcss/vite@^4.1.18",
     "@modelcontextprotocol/sdk": "npm:@modelcontextprotocol/sdk@^1.28.0",
     "zod": "npm:zod@^3.25.0",
-    "hono": "npm:hono@^4.7.0"
+    "hono": "npm:hono@^4.7.0",
+    "canvas": "npm:canvas@^3.1.0"
   },
   "tasks": {
     "dev": "deno run -A npm:vite --port 3002",

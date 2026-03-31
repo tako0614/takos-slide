@@ -6,12 +6,14 @@
  * - slide_add / slide_remove / slide_reorder / slide_set_background / slide_duplicate
  * - slide_add_text / slide_add_shape / slide_add_image
  * - slide_remove_element / slide_update_element / slide_move_element / slide_resize_element
+ * - slide_screenshot
  * - slide_export_json / slide_get_slide_count
  */
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { PresentationStore } from "./presentation-store.ts";
+import { renderSlideToBuffer } from "./lib/server-renderer.ts";
 
 export function createSlideMcpServer(store: PresentationStore): McpServer {
   const server = new McpServer({
@@ -492,6 +494,63 @@ export function createSlideMcpServer(store: PresentationStore): McpServer {
         );
       } catch (e) {
         return text(String(e));
+      }
+    },
+  );
+
+  // =========================================================================
+  // Screenshot
+  // =========================================================================
+
+  server.tool(
+    "slide_screenshot",
+    "Take a screenshot of a slide as a PNG image for visual inspection.",
+    {
+      presentationId: z.string().describe("Presentation ID"),
+      slideIndex: z.number().describe("Slide index (0-based)"),
+      width: z
+        .number()
+        .optional()
+        .describe("Image width in pixels (default: 1280)"),
+      height: z
+        .number()
+        .optional()
+        .describe("Image height in pixels (default: 720)"),
+    },
+    async ({
+      presentationId,
+      slideIndex,
+      width,
+      height,
+    }: {
+      presentationId: string;
+      slideIndex: number;
+      width?: number;
+      height?: number;
+    }) => {
+      const p = store.get(presentationId);
+      if (!p) return text(`Presentation not found: ${presentationId}`);
+      const slide = p.slides[slideIndex];
+      if (!slide) {
+        return text(
+          `Slide index ${slideIndex} out of range (0..${p.slides.length - 1})`,
+        );
+      }
+
+      try {
+        const buf = renderSlideToBuffer(slide, width ?? 1280, height ?? 720);
+        const base64 = buf.toString("base64");
+        return {
+          content: [
+            {
+              type: "image" as const,
+              data: base64,
+              mimeType: "image/png",
+            },
+          ],
+        };
+      } catch (e) {
+        return text(`Failed to render slide: ${String(e)}`);
       }
     },
   );
