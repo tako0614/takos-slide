@@ -25,6 +25,9 @@ spec:
     - name: web
       target: web
       path: /
+    - name: mcp
+      target: web
+      path: /mcp
 
   resources:
     slide-db:
@@ -37,3 +40,8 @@ spec:
   env:
     inject:
       APP_URL: "{{routes.web.url}}"
+
+  mcpServers:
+    - name: takos-slide
+      route: mcp
+      transport: streamable-http
