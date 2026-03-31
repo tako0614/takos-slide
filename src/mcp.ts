@@ -34,14 +34,14 @@ export function createSlideMcpServer(store: PresentationStore): McpServer {
     "slide_list",
     "List all presentations. Returns id, title, slideCount and updatedAt for each.",
     {},
-    async () => json(store.list()),
+    async () => json(await store.list()),
   );
 
   server.tool(
     "slide_create",
     "Create a new presentation with one blank slide.",
     { title: z.string().describe("Presentation title") },
-    async ({ title }: { title: string }) => json(store.create(title)),
+    async ({ title }: { title: string }) => json(await store.create(title)),
   );
 
   server.tool(
@@ -49,7 +49,7 @@ export function createSlideMcpServer(store: PresentationStore): McpServer {
     "Get full presentation data including all slides and elements.",
     { id: z.string().describe("Presentation ID") },
     async ({ id }: { id: string }) => {
-      const p = store.get(id);
+      const p = await store.get(id);
       if (!p) return text(`Presentation not found: ${id}`);
       return json(p);
     },
@@ -60,7 +60,7 @@ export function createSlideMcpServer(store: PresentationStore): McpServer {
     "Delete a presentation.",
     { id: z.string().describe("Presentation ID") },
     async ({ id }: { id: string }) => {
-      const ok = store.delete(id);
+      const ok = await store.delete(id);
       if (!ok) return text(`Presentation not found: ${id}`);
       return text("Deleted");
     },
@@ -75,7 +75,7 @@ export function createSlideMcpServer(store: PresentationStore): McpServer {
     },
     async ({ id, title }: { id: string; title: string }) => {
       try {
-        return json(store.setTitle(id, title));
+        return json(await store.setTitle(id, title));
       } catch (e) {
         return text(String(e));
       }
@@ -110,7 +110,7 @@ export function createSlideMcpServer(store: PresentationStore): McpServer {
       background?: string;
     }) => {
       try {
-        return json(store.addSlide(presentationId, index, background));
+        return json(await store.addSlide(presentationId, index, background));
       } catch (e) {
         return text(String(e));
       }
@@ -132,7 +132,7 @@ export function createSlideMcpServer(store: PresentationStore): McpServer {
       slideIndex: number;
     }) => {
       try {
-        store.removeSlide(presentationId, slideIndex);
+        await store.removeSlide(presentationId, slideIndex);
         return text("Removed");
       } catch (e) {
         return text(String(e));
@@ -158,7 +158,7 @@ export function createSlideMcpServer(store: PresentationStore): McpServer {
       toIndex: number;
     }) => {
       try {
-        store.reorderSlide(presentationId, fromIndex, toIndex);
+        await store.reorderSlide(presentationId, fromIndex, toIndex);
         return text("Reordered");
       } catch (e) {
         return text(String(e));
@@ -184,7 +184,7 @@ export function createSlideMcpServer(store: PresentationStore): McpServer {
       background: string;
     }) => {
       try {
-        store.setSlideBackground(presentationId, slideIndex, background);
+        await store.setSlideBackground(presentationId, slideIndex, background);
         return text("Background updated");
       } catch (e) {
         return text(String(e));
@@ -207,7 +207,7 @@ export function createSlideMcpServer(store: PresentationStore): McpServer {
       slideIndex: number;
     }) => {
       try {
-        return json(store.duplicateSlide(presentationId, slideIndex));
+        return json(await store.duplicateSlide(presentationId, slideIndex));
       } catch (e) {
         return text(String(e));
       }
@@ -255,7 +255,7 @@ export function createSlideMcpServer(store: PresentationStore): McpServer {
     }) => {
       try {
         return json(
-          store.addTextElement(args.presentationId, args.slideIndex, {
+          await store.addTextElement(args.presentationId, args.slideIndex, {
             text: args.text,
             x: args.x,
             y: args.y,
@@ -308,7 +308,7 @@ export function createSlideMcpServer(store: PresentationStore): McpServer {
     }) => {
       try {
         return json(
-          store.addShapeElement(args.presentationId, args.slideIndex, {
+          await store.addShapeElement(args.presentationId, args.slideIndex, {
             shapeType: args.shapeType,
             x: args.x,
             y: args.y,
@@ -347,7 +347,7 @@ export function createSlideMcpServer(store: PresentationStore): McpServer {
     }) => {
       try {
         return json(
-          store.addImageElement(args.presentationId, args.slideIndex, {
+          await store.addImageElement(args.presentationId, args.slideIndex, {
             imageUrl: args.imageUrl,
             x: args.x,
             y: args.y,
@@ -379,7 +379,7 @@ export function createSlideMcpServer(store: PresentationStore): McpServer {
       elementId: string;
     }) => {
       try {
-        store.removeElement(presentationId, slideIndex, elementId);
+        await store.removeElement(presentationId, slideIndex, elementId);
         return text("Removed");
       } catch (e) {
         return text(String(e));
@@ -413,7 +413,7 @@ export function createSlideMcpServer(store: PresentationStore): McpServer {
     }) => {
       try {
         return json(
-          store.updateElement(
+          await store.updateElement(
             presentationId,
             slideIndex,
             elementId,
@@ -451,7 +451,7 @@ export function createSlideMcpServer(store: PresentationStore): McpServer {
     }) => {
       try {
         return json(
-          store.moveElement(presentationId, slideIndex, elementId, x, y),
+          await store.moveElement(presentationId, slideIndex, elementId, x, y),
         );
       } catch (e) {
         return text(String(e));
@@ -484,7 +484,7 @@ export function createSlideMcpServer(store: PresentationStore): McpServer {
     }) => {
       try {
         return json(
-          store.resizeElement(
+          await store.resizeElement(
             presentationId,
             slideIndex,
             elementId,
@@ -528,7 +528,7 @@ export function createSlideMcpServer(store: PresentationStore): McpServer {
       width?: number;
       height?: number;
     }) => {
-      const p = store.get(presentationId);
+      const p = await store.get(presentationId);
       if (!p) return text(`Presentation not found: ${presentationId}`);
       const slide = p.slides[slideIndex];
       if (!slide) {
@@ -565,7 +565,7 @@ export function createSlideMcpServer(store: PresentationStore): McpServer {
     { id: z.string().describe("Presentation ID") },
     async ({ id }: { id: string }) => {
       try {
-        return json(store.exportJson(id));
+        return json(await store.exportJson(id));
       } catch (e) {
         return text(String(e));
       }
@@ -578,7 +578,7 @@ export function createSlideMcpServer(store: PresentationStore): McpServer {
     { id: z.string().describe("Presentation ID") },
     async ({ id }: { id: string }) => {
       try {
-        return json({ slideCount: store.getSlideCount(id) });
+        return json({ slideCount: await store.getSlideCount(id) });
       } catch (e) {
         return text(String(e));
       }

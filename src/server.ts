@@ -9,12 +9,17 @@
  */
 
 import { Hono } from "hono";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { createPresentationStore } from "./presentation-store.ts";
 import { createSlideMcpServer } from "./mcp.ts";
+import { createTakosStorageClient } from "./lib/takos-storage.ts";
 
-const store = createPresentationStore();
+const apiUrl = Deno.env.get("TAKOS_API_URL") || "http://localhost:8787";
+const token = Deno.env.get("TAKOS_ACCESS_TOKEN") || "";
+const spaceId = Deno.env.get("TAKOS_SPACE_ID") || "default";
+
+const client = createTakosStorageClient(apiUrl, token, spaceId);
+const store = createPresentationStore(client);
 const mcpServer = createSlideMcpServer(store);
 
 const app = new Hono();

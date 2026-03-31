@@ -1,12 +1,18 @@
 /**
- * In-memory presentation store for the MCP server.
+ * PresentationStore backed by the takos platform storage API.
  *
- * Mirrors the data model from `types/index.ts` and the helper functions
- * from `lib/storage.ts`, but operates entirely in server memory instead of
- * browser localStorage.
+ * Each presentation is stored as a JSON file under a `/takos-slide/` folder:
+ *   - File name: `{id}.json`
+ *   - Content: full Presentation object serialised as JSON
+ *
+ * The store keeps an in-memory cache that is hydrated on first access
+ * and written through on every mutation.
  */
 
 import type { Presentation, Slide, SlideElement } from "./types/index.ts";
+import type { TakosStorageClient } from "./lib/takos-storage.ts";
+
+const FOLDER_NAME = "takos-slide";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -29,36 +35,37 @@ function createDefaultSlide(): Slide {
 }
 
 // ---------------------------------------------------------------------------
-// PresentationStore
+// PresentationStore interface (all methods are now async)
 // ---------------------------------------------------------------------------
 
 export interface PresentationStore {
   // Presentation CRUD
-  list(): (Pick<Presentation, "id" | "title" | "updatedAt"> &
-    { slideCount: number })[];
-  create(title: string): Presentation;
-  get(id: string): Presentation | undefined;
-  delete(id: string): boolean;
-  setTitle(id: string, title: string): Presentation;
+  list(): Promise<
+    (Pick<Presentation, "id" | "title" | "updatedAt"> & { slideCount: number })[]
+  >;
+  create(title: string): Promise<Presentation>;
+  get(id: string): Promise<Presentation | undefined>;
+  delete(id: string): Promise<boolean>;
+  setTitle(id: string, title: string): Promise<Presentation>;
 
   // Slide operations
   addSlide(
     presentationId: string,
     index?: number,
     background?: string,
-  ): Slide;
-  removeSlide(presentationId: string, slideIndex: number): void;
+  ): Promise<Slide>;
+  removeSlide(presentationId: string, slideIndex: number): Promise<void>;
   reorderSlide(
     presentationId: string,
     fromIndex: number,
     toIndex: number,
-  ): void;
+  ): Promise<void>;
   setSlideBackground(
     presentationId: string,
     slideIndex: number,
     background: string,
-  ): void;
-  duplicateSlide(presentationId: string, slideIndex: number): Slide;
+  ): Promise<void>;
+  duplicateSlide(presentationId: string, slideIndex: number): Promise<Slide>;
 
   // Element operations
   addTextElement(
@@ -75,7 +82,7 @@ export interface PresentationStore {
       bold?: boolean;
       italic?: boolean;
     },
-  ): SlideElement;
+  ): Promise<SlideElement>;
 
   addShapeElement(
     presentationId: string,
@@ -89,7 +96,7 @@ export interface PresentationStore {
       fillColor?: string;
       strokeColor?: string;
     },
-  ): SlideElement;
+  ): Promise<SlideElement>;
 
   addImageElement(
     presentationId: string,
@@ -101,20 +108,20 @@ export interface PresentationStore {
       width?: number;
       height?: number;
     },
-  ): SlideElement;
+  ): Promise<SlideElement>;
 
   removeElement(
     presentationId: string,
     slideIndex: number,
     elementId: string,
-  ): void;
+  ): Promise<void>;
 
   updateElement(
     presentationId: string,
     slideIndex: number,
     elementId: string,
     properties: Partial<Omit<SlideElement, "id" | "type">>,
-  ): SlideElement;
+  ): Promise<SlideElement>;
 
   moveElement(
     presentationId: string,
@@ -122,7 +129,7 @@ export interface PresentationStore {
     elementId: string,
     x: number,
     y: number,
-  ): SlideElement;
+  ): Promise<SlideElement>;
 
   resizeElement(
     presentationId: string,
@@ -130,26 +137,73 @@ export interface PresentationStore {
     elementId: string,
     width: number,
     height: number,
-  ): SlideElement;
+  ): Promise<SlideElement>;
 
   // Export
-  exportJson(id: string): Presentation;
-  getSlideCount(id: string): number;
+  exportJson(id: string): Promise<Presentation>;
+  getSlideCount(id: string): Promise<number>;
 }
 
 // ---------------------------------------------------------------------------
-// In-memory implementation
+// Implementation
 // ---------------------------------------------------------------------------
 
-export function createPresentationStore(): PresentationStore {
-  const presentations = new Map<string, Presentation>();
+export function createPresentationStore(
+  client: TakosStorageClient,
+): PresentationStore {
+  /** presentation.id -> { presentation, fileId } */
+  const cache = new Map<string, { p: Presentation; fileId: string }>();
+  let folderId: string | null = null;
+  let initialized = false;
 
-  // -- internal helpers -----------------------------------------------------
+  // -- internal helpers ----------------------------------------------------
 
-  function mustGet(id: string): Presentation {
-    const p = presentations.get(id);
-    if (!p) throw new Error(`Presentation not found: ${id}`);
-    return p;
+  async function ensureInitialized(): Promise<void> {
+    if (initialized) return;
+
+    // Find or create the app folder
+    const files = await client.list();
+    const folder = files.find(
+      (f) => f.type === "folder" && f.name === FOLDER_NAME,
+    );
+    if (folder) {
+      folderId = folder.id;
+    } else {
+      const created = await client.createFolder(FOLDER_NAME);
+      folderId = created.id;
+    }
+
+    // Load all presentation files
+    const allFiles = await client.list(FOLDER_NAME);
+    for (const file of allFiles) {
+      if (file.type !== "file" || !file.name.endsWith(".json")) continue;
+      try {
+        const raw = await client.getContent(file.id);
+        const p = JSON.parse(raw) as Presentation;
+        cache.set(p.id, { p, fileId: file.id });
+      } catch {
+        console.warn(
+          `[takos-slide] Skipping unreadable file: ${file.name}`,
+        );
+      }
+    }
+
+    initialized = true;
+  }
+
+  async function persist(id: string): Promise<void> {
+    const entry = cache.get(id);
+    if (!entry) return;
+    await client.putContent(entry.fileId, JSON.stringify(entry.p));
+  }
+
+  async function mustGet(
+    id: string,
+  ): Promise<{ p: Presentation; fileId: string }> {
+    await ensureInitialized();
+    const entry = cache.get(id);
+    if (!entry) throw new Error(`Presentation not found: ${id}`);
+    return entry;
   }
 
   function mustGetSlide(p: Presentation, slideIndex: number): Slide {
@@ -172,21 +226,23 @@ export function createPresentationStore(): PresentationStore {
     p.updatedAt = now();
   }
 
-  // -- store ----------------------------------------------------------------
+  // -- store ---------------------------------------------------------------
 
   const store: PresentationStore = {
     // Presentation CRUD ---------------------------------------------------
 
-    list() {
-      return [...presentations.values()].map((p) => ({
-        id: p.id,
-        title: p.title,
-        slideCount: p.slides.length,
-        updatedAt: p.updatedAt,
+    async list() {
+      await ensureInitialized();
+      return [...cache.values()].map((e) => ({
+        id: e.p.id,
+        title: e.p.title,
+        slideCount: e.p.slides.length,
+        updatedAt: e.p.updatedAt,
       }));
     },
 
-    create(title: string) {
+    async create(title: string) {
+      await ensureInitialized();
       const ts = now();
       const p: Presentation = {
         id: generateId(),
@@ -195,29 +251,41 @@ export function createPresentationStore(): PresentationStore {
         createdAt: ts,
         updatedAt: ts,
       };
-      presentations.set(p.id, p);
+      const file = await client.create(
+        `${p.id}.json`,
+        folderId ?? undefined,
+      );
+      await client.putContent(file.id, JSON.stringify(p));
+      cache.set(p.id, { p, fileId: file.id });
       return p;
     },
 
-    get(id: string) {
-      return presentations.get(id);
+    async get(id: string) {
+      await ensureInitialized();
+      return cache.get(id)?.p;
     },
 
-    delete(id: string) {
-      return presentations.delete(id);
+    async delete(id: string) {
+      await ensureInitialized();
+      const entry = cache.get(id);
+      if (!entry) return false;
+      await client.delete(entry.fileId);
+      cache.delete(id);
+      return true;
     },
 
-    setTitle(id: string, title: string) {
-      const p = mustGet(id);
+    async setTitle(id: string, title: string) {
+      const { p } = await mustGet(id);
       p.title = title;
       touch(p);
+      await persist(id);
       return p;
     },
 
     // Slide operations ----------------------------------------------------
 
-    addSlide(presentationId, index, background) {
-      const p = mustGet(presentationId);
+    async addSlide(presentationId, index, background) {
+      const { p } = await mustGet(presentationId);
       const slide: Slide = {
         id: generateId(),
         elements: [],
@@ -229,18 +297,20 @@ export function createPresentationStore(): PresentationStore {
         p.slides.push(slide);
       }
       touch(p);
+      await persist(presentationId);
       return slide;
     },
 
-    removeSlide(presentationId, slideIndex) {
-      const p = mustGet(presentationId);
+    async removeSlide(presentationId, slideIndex) {
+      const { p } = await mustGet(presentationId);
       mustGetSlide(p, slideIndex);
       p.slides.splice(slideIndex, 1);
       touch(p);
+      await persist(presentationId);
     },
 
-    reorderSlide(presentationId, fromIndex, toIndex) {
-      const p = mustGet(presentationId);
+    async reorderSlide(presentationId, fromIndex, toIndex) {
+      const { p } = await mustGet(presentationId);
       mustGetSlide(p, fromIndex);
       if (toIndex < 0 || toIndex >= p.slides.length) {
         throw new Error(
@@ -250,17 +320,19 @@ export function createPresentationStore(): PresentationStore {
       const [slide] = p.slides.splice(fromIndex, 1);
       p.slides.splice(toIndex, 0, slide);
       touch(p);
+      await persist(presentationId);
     },
 
-    setSlideBackground(presentationId, slideIndex, background) {
-      const p = mustGet(presentationId);
+    async setSlideBackground(presentationId, slideIndex, background) {
+      const { p } = await mustGet(presentationId);
       const slide = mustGetSlide(p, slideIndex);
       slide.background = background;
       touch(p);
+      await persist(presentationId);
     },
 
-    duplicateSlide(presentationId, slideIndex) {
-      const p = mustGet(presentationId);
+    async duplicateSlide(presentationId, slideIndex) {
+      const { p } = await mustGet(presentationId);
       const src = mustGetSlide(p, slideIndex);
       const dup: Slide = {
         id: generateId(),
@@ -269,13 +341,14 @@ export function createPresentationStore(): PresentationStore {
       };
       p.slides.splice(slideIndex + 1, 0, dup);
       touch(p);
+      await persist(presentationId);
       return dup;
     },
 
     // Element operations --------------------------------------------------
 
-    addTextElement(presentationId, slideIndex, opts) {
-      const p = mustGet(presentationId);
+    async addTextElement(presentationId, slideIndex, opts) {
+      const { p } = await mustGet(presentationId);
       const slide = mustGetSlide(p, slideIndex);
       const el: SlideElement = {
         id: generateId(),
@@ -295,11 +368,12 @@ export function createPresentationStore(): PresentationStore {
       };
       slide.elements.push(el);
       touch(p);
+      await persist(presentationId);
       return el;
     },
 
-    addShapeElement(presentationId, slideIndex, opts) {
-      const p = mustGet(presentationId);
+    async addShapeElement(presentationId, slideIndex, opts) {
+      const { p } = await mustGet(presentationId);
       const slide = mustGetSlide(p, slideIndex);
       const el: SlideElement = {
         id: generateId(),
@@ -316,11 +390,12 @@ export function createPresentationStore(): PresentationStore {
       };
       slide.elements.push(el);
       touch(p);
+      await persist(presentationId);
       return el;
     },
 
-    addImageElement(presentationId, slideIndex, opts) {
-      const p = mustGet(presentationId);
+    async addImageElement(presentationId, slideIndex, opts) {
+      const { p } = await mustGet(presentationId);
       const slide = mustGetSlide(p, slideIndex);
       const el: SlideElement = {
         id: generateId(),
@@ -334,55 +409,62 @@ export function createPresentationStore(): PresentationStore {
       };
       slide.elements.push(el);
       touch(p);
+      await persist(presentationId);
       return el;
     },
 
-    removeElement(presentationId, slideIndex, elementId) {
-      const p = mustGet(presentationId);
+    async removeElement(presentationId, slideIndex, elementId) {
+      const { p } = await mustGet(presentationId);
       const slide = mustGetSlide(p, slideIndex);
       const idx = slide.elements.findIndex((e) => e.id === elementId);
       if (idx === -1) throw new Error(`Element not found: ${elementId}`);
       slide.elements.splice(idx, 1);
       touch(p);
+      await persist(presentationId);
     },
 
-    updateElement(presentationId, slideIndex, elementId, properties) {
-      const p = mustGet(presentationId);
+    async updateElement(presentationId, slideIndex, elementId, properties) {
+      const { p } = await mustGet(presentationId);
       const slide = mustGetSlide(p, slideIndex);
       const el = mustGetElement(slide, elementId);
       Object.assign(el, properties);
       touch(p);
+      await persist(presentationId);
       return el;
     },
 
-    moveElement(presentationId, slideIndex, elementId, x, y) {
-      const p = mustGet(presentationId);
+    async moveElement(presentationId, slideIndex, elementId, x, y) {
+      const { p } = await mustGet(presentationId);
       const slide = mustGetSlide(p, slideIndex);
       const el = mustGetElement(slide, elementId);
       el.x = x;
       el.y = y;
       touch(p);
+      await persist(presentationId);
       return el;
     },
 
-    resizeElement(presentationId, slideIndex, elementId, width, height) {
-      const p = mustGet(presentationId);
+    async resizeElement(presentationId, slideIndex, elementId, width, height) {
+      const { p } = await mustGet(presentationId);
       const slide = mustGetSlide(p, slideIndex);
       const el = mustGetElement(slide, elementId);
       el.width = width;
       el.height = height;
       touch(p);
+      await persist(presentationId);
       return el;
     },
 
     // Export ---------------------------------------------------------------
 
-    exportJson(id: string) {
-      return mustGet(id);
+    async exportJson(id: string) {
+      const { p } = await mustGet(id);
+      return p;
     },
 
-    getSlideCount(id: string) {
-      return mustGet(id).slides.length;
+    async getSlideCount(id: string) {
+      const { p } = await mustGet(id);
+      return p.slides.length;
     },
   };
 
