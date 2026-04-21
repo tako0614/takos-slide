@@ -25,7 +25,11 @@ publish:
     type: UiSurface
     path: /
     title: Slide
-    spec: {}
+    spec:
+      description: Takos presentation editor
+      icon: S
+      category: office
+      sortOrder: 30
   - name: slide-mcp
     publisher: web
     type: McpServer
@@ -44,8 +48,8 @@ compute:
     consume:
       - publication: takos-api
         env:
-          endpoint: TAKOS_API_URL
-          apiKey: TAKOS_ACCESS_TOKEN
+          endpoint: TAKOS_STORAGE_API_URL
+          apiKey: TAKOS_STORAGE_ACCESS_TOKEN
       - publication: slide-oauth
         env:
           clientId: OAUTH_CLIENT_ID

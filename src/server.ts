@@ -116,8 +116,11 @@ async function readBoundedJsonRequest(
 }
 
 export function createSlideAppFromEnv(env: SlideRuntimeEnv = denoEnv()) {
-  const apiUrl = envValue(env, "TAKOS_API_URL") || "http://localhost:8787";
-  const token = requiredEnv(env, "TAKOS_ACCESS_TOKEN");
+  const apiUrl = envValue(env, "TAKOS_STORAGE_API_URL") ||
+    envValue(env, "TAKOS_API_URL") ||
+    "http://localhost:8787";
+  const token = envValue(env, "TAKOS_STORAGE_ACCESS_TOKEN") ||
+    requiredEnv(env, "TAKOS_ACCESS_TOKEN");
   const spaceId = requiredEnv(env, "TAKOS_SPACE_ID");
   const client = createTakosStorageClient(apiUrl, token, spaceId);
   const store = createPresentationStore(client);
