@@ -1,4 +1,5 @@
 import { Show } from "solid-js";
+import type { JSX } from "solid-js";
 import type { SlideElement } from "../types";
 
 interface PropertyPanelProps {
@@ -8,7 +9,7 @@ interface PropertyPanelProps {
   onUpdateBackground: (color: string) => void;
 }
 
-function PropertyRow(props: { label: string; children: any }) {
+function PropertyRow(props: { label: string; children: JSX.Element }) {
   return (
     <div class="flex items-center justify-between gap-2">
       <label class="text-xs text-gray-400 shrink-0 w-16">{props.label}</label>
@@ -163,8 +164,7 @@ export default function PropertyPanel(props: PropertyPanelProps) {
                           | "left"
                           | "center"
                           | "right",
-                      })
-                    }
+                      })}
                   >
                     <option value="left">Left</option>
                     <option value="center">Center</option>
@@ -173,22 +173,24 @@ export default function PropertyPanel(props: PropertyPanelProps) {
                 </PropertyRow>
                 <div class="flex gap-2">
                   <button
+                    type="button"
                     class="flex-1 text-xs py-1 rounded transition-colors"
                     classList={{
                       "bg-blue-600 text-white": el()!.bold,
-                      "bg-gray-700 text-gray-300 hover:bg-gray-600":
-                        !el()!.bold,
+                      "bg-gray-700 text-gray-300 hover:bg-gray-600": !el()!
+                        .bold,
                     }}
                     onClick={() => update({ bold: !el()!.bold })}
                   >
                     B
                   </button>
                   <button
+                    type="button"
                     class="flex-1 text-xs py-1 rounded transition-colors italic"
                     classList={{
                       "bg-blue-600 text-white": el()!.italic,
-                      "bg-gray-700 text-gray-300 hover:bg-gray-600":
-                        !el()!.italic,
+                      "bg-gray-700 text-gray-300 hover:bg-gray-600": !el()!
+                        .italic,
                     }}
                     onClick={() => update({ italic: !el()!.italic })}
                   >
@@ -233,9 +235,7 @@ export default function PropertyPanel(props: PropertyPanelProps) {
                     type="text"
                     class="w-full bg-gray-700 text-gray-200 text-xs px-2 py-1 rounded border border-gray-600 outline-none focus:border-blue-500"
                     value={el()!.imageUrl ?? ""}
-                    onInput={(e) =>
-                      update({ imageUrl: e.currentTarget.value })
-                    }
+                    onInput={(e) => update({ imageUrl: e.currentTarget.value })}
                     placeholder="https://..."
                   />
                 </PropertyRow>

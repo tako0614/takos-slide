@@ -1,4 +1,10 @@
-import { createEffect, createMemo, createSignal, onCleanup, Show } from "solid-js";
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  onCleanup,
+  Show,
+} from "solid-js";
 import { useNavigate, useParams } from "@solidjs/router";
 import type { Presentation, SlideElement } from "../types";
 import {
@@ -6,7 +12,7 @@ import {
   createImageElement,
   createShapeElement,
   createTextElement,
-  getPresentation,
+  loadPresentationsFromApi,
   savePresentation,
 } from "../lib/storage";
 import SlideCanvas from "../components/SlideCanvas";
@@ -31,12 +37,14 @@ export default function EditorPage() {
 
   // Load presentation
   createEffect(() => {
-    const pres = getPresentation(params.id);
-    if (pres) {
-      setPresentation(pres);
-    } else {
-      navigate("/");
-    }
+    setPresentation(null);
+    void loadPresentationsFromApi()
+      .then((presentations) => {
+        const remote = presentations.find((entry) => entry.id === params.id);
+        if (remote) setPresentation(remote);
+        else navigate("/");
+      })
+      .catch(() => navigate("/"));
   });
 
   const currentSlide = createMemo(() => {
@@ -82,7 +90,7 @@ export default function EditorPage() {
 
   const handleUpdateElement = (updated: SlideElement) => {
     updateSlide((elements) =>
-      elements.map((e) => (e.id === updated.id ? updated : e)),
+      elements.map((e) => (e.id === updated.id ? updated : e))
     );
   };
 
@@ -204,8 +212,9 @@ export default function EditorPage() {
     if (
       e.target instanceof HTMLInputElement ||
       e.target instanceof HTMLTextAreaElement
-    )
+    ) {
       return;
+    }
 
     if (e.key === "Delete" || e.key === "Backspace") {
       handleDelete();
@@ -234,7 +243,10 @@ export default function EditorPage() {
   onCleanup(() => document.removeEventListener("keydown", handleKeyDown));
 
   return (
-    <Show when={presentation()} fallback={<div class="p-8 text-gray-400">Loading...</div>}>
+    <Show
+      when={presentation()}
+      fallback={<div class="p-8 text-gray-400">Loading...</div>}
+    >
       <div class="h-screen flex flex-col bg-gray-900">
         {/* Toolbar */}
         <ShapeToolbar
@@ -317,6 +329,7 @@ export default function EditorPage() {
                     />
                     <div class="flex justify-end mt-3">
                       <button
+                        type="button"
                         class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-1.5 rounded text-sm transition-colors"
                         onClick={() => setEditingTextId(null)}
                       >
@@ -333,11 +346,11 @@ export default function EditorPage() {
         {/* Bottom bar */}
         <div class="h-7 bg-gray-800 border-t border-gray-700 flex items-center px-4 text-xs text-gray-500">
           <span>
-            Slide {selectedSlideIndex() + 1} of{" "}
-            {presentation()!.slides.length}
+            Slide {selectedSlideIndex() + 1} of {presentation()!.slides.length}
           </span>
           <span class="mx-2">|</span>
           <button
+            type="button"
             class="hover:text-gray-300 transition-colors"
             onClick={() => navigate("/")}
           >

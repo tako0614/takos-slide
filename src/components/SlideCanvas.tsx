@@ -1,5 +1,5 @@
 import { createEffect, createSignal, onCleanup, onMount } from "solid-js";
-import type { Presentation, Slide, SlideElement } from "../types";
+import type { Slide, SlideElement } from "../types";
 import {
   hitTestElements,
   hitTestHandles,
@@ -50,12 +50,13 @@ export default function SlideCanvas(props: SlideCanvasProps) {
     if (!ctx) return;
 
     const { w, h } = canvasSize();
-    canvasRef.width = w * window.devicePixelRatio;
-    canvasRef.height = h * window.devicePixelRatio;
+    const pixelRatio = globalThis.devicePixelRatio || 1;
+    canvasRef.width = w * pixelRatio;
+    canvasRef.height = h * pixelRatio;
     canvasRef.style.width = `${w}px`;
     canvasRef.style.height = `${h}px`;
 
-    ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+    ctx.scale(pixelRatio, pixelRatio);
 
     renderSlide(ctx, props.slide, w, h, {
       selectedElementId: props.selectedElementId,

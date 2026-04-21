@@ -19,7 +19,7 @@ export function renderSlideToBuffer(
   slide: Slide,
   width = 1280,
   height = 720,
-): Buffer {
+): Uint8Array {
   const canvas = createCanvas(width, height);
   const ctx = canvas.getContext("2d");
 

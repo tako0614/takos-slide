@@ -43,7 +43,7 @@ function SlideThumbnail(props: {
         "bg-blue-600/30 ring-2 ring-blue-500": props.selected,
         "hover:bg-gray-700": !props.selected,
       }}
-      draggable={true}
+      draggable
       onDragStart={props.onDragStart}
       onDragOver={props.onDragOver}
       onDrop={props.onDrop}
@@ -61,6 +61,7 @@ function SlideThumbnail(props: {
       </div>
       {/* Delete button */}
       <button
+        type="button"
         class="absolute top-2 right-2 w-5 h-5 rounded bg-red-600/80 text-white text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 hover:bg-red-500 transition-opacity"
         onClick={(e) => {
           e.stopPropagation();
@@ -83,6 +84,7 @@ export default function SlidePanel(props: SlidePanelProps) {
           Slides
         </span>
         <button
+          type="button"
           class="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded transition-colors"
           onClick={() => props.onAddSlide()}
         >

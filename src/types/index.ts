@@ -1,5 +1,33 @@
 export type SlideElementType = "text" | "shape" | "image";
 
+// ---------------------------------------------------------------------------
+// Transitions
+// ---------------------------------------------------------------------------
+
+export type TransitionType =
+  | "none"
+  | "fade"
+  | "slide-left"
+  | "slide-right"
+  | "slide-up"
+  | "zoom";
+
+export interface SlideTransition {
+  type: TransitionType;
+  duration: number; // ms
+}
+
+// ---------------------------------------------------------------------------
+// Templates
+// ---------------------------------------------------------------------------
+
+export interface SlideTemplate {
+  id: string;
+  name: string;
+  description: string;
+  slides: Omit<Slide, "id">[];
+}
+
 export interface SlideElement {
   id: string;
   type: SlideElementType;
@@ -29,6 +57,7 @@ export interface Slide {
   id: string;
   elements: SlideElement[];
   background: string; // CSS color or gradient
+  transition?: SlideTransition;
 }
 
 export interface Presentation {

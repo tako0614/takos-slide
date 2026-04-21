@@ -1,6 +1,70 @@
-import type { Presentation, Slide, SlideElement } from "../types";
+import type { Presentation, Slide, SlideElement } from "../types/index.ts";
 
 const STORAGE_KEY = "takos-slide-presentations";
+const API_PRESENTATIONS_PATH = "/api/presentations";
+
+function redirectToLogin(): void {
+  const location = globalThis.location;
+  if (!location) return;
+  const returnTo = `${location.pathname}${location.search}${location.hash}`;
+  location.href = `/api/auth/login?return_to=${encodeURIComponent(returnTo)}`;
+}
+
+export function clearPresentationsCache(): void {
+  localStorage.removeItem(STORAGE_KEY);
+}
+
+async function requestJson<T>(
+  path: string,
+  init?: RequestInit,
+): Promise<T> {
+  const response = await fetch(path, {
+    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      ...init?.headers,
+    },
+    credentials: "same-origin",
+  });
+  if (response.status === 401) {
+    clearPresentationsCache();
+    redirectToLogin();
+  }
+  if (!response.ok) {
+    throw new Error(`Request failed: ${response.status}`);
+  }
+  return await response.json() as T;
+}
+
+function syncPresentationToApi(presentation: Presentation): void {
+  void requestJson<Presentation>(
+    `${API_PRESENTATIONS_PATH}/${encodeURIComponent(presentation.id)}`,
+    {
+      method: "PUT",
+      body: JSON.stringify(presentation),
+    },
+  ).catch(() => undefined);
+}
+
+function deletePresentationFromApi(id: string): void {
+  void fetch(`${API_PRESENTATIONS_PATH}/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    credentials: "same-origin",
+  }).then((response) => {
+    if (response.status === 401) {
+      clearPresentationsCache();
+      redirectToLogin();
+    }
+  }).catch(() => undefined);
+}
+
+export async function loadPresentationsFromApi(): Promise<Presentation[]> {
+  const presentations = await requestJson<Presentation[]>(
+    API_PRESENTATIONS_PATH,
+  );
+  savePresentations(presentations);
+  return presentations;
+}
 
 function generateId(): string {
   return crypto.randomUUID();
@@ -52,12 +116,14 @@ export function savePresentation(presentation: Presentation): Presentation[] {
     presentations.push(updated);
   }
   savePresentations(presentations);
+  syncPresentationToApi(updated);
   return presentations;
 }
 
 export function deletePresentation(id: string): Presentation[] {
   const presentations = loadPresentations().filter((p) => p.id !== id);
   savePresentations(presentations);
+  deletePresentationFromApi(id);
   return presentations;
 }
 

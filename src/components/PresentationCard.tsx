@@ -62,6 +62,7 @@ export default function PresentationCard(props: PresentationCardProps) {
             {formatDate(props.presentation.updatedAt)}
           </span>
           <button
+            type="button"
             class="text-xs text-red-400 opacity-0 group-hover:opacity-100 hover:text-red-300 transition-opacity px-2 py-1 rounded hover:bg-red-900/30"
             onClick={(e) => {
               e.stopPropagation();
