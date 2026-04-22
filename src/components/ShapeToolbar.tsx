@@ -22,10 +22,10 @@ function ToolButton(props: {
   const variant = () => props.variant ?? "default";
   return (
     <button
+      type="button"
       class="px-3 py-1.5 text-xs font-medium rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
       classList={{
-        "bg-gray-700 hover:bg-gray-600 text-gray-200":
-          variant() === "default",
+        "bg-gray-700 hover:bg-gray-600 text-gray-200": variant() === "default",
         "bg-red-700/60 hover:bg-red-600/80 text-red-200":
           variant() === "danger",
         "bg-blue-600 hover:bg-blue-500 text-white": variant() === "primary",

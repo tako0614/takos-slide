@@ -1,4 +1,4 @@
-import type { Slide, SlideElement } from "../types";
+import type { Slide, SlideElement } from "../types/index.ts";
 
 const SLIDE_ASPECT = 16 / 9;
 

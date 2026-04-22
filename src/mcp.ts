@@ -7,15 +7,35 @@
  * - slide_add_text / slide_add_shape / slide_add_image
  * - slide_remove_element / slide_update_element / slide_move_element / slide_resize_element
  * - slide_screenshot
- * - slide_export_json / slide_get_slide_count
+ * - slide_export_json / slide_export_pdf / slide_get_slide_count
+ * - slide_set_transition
+ * - slide_list_templates / slide_create_from_template / slide_add_from_template
  */
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { PresentationStore } from "./presentation-store.ts";
-import { renderSlideToBuffer } from "./lib/server-renderer.ts";
 
-export function createSlideMcpServer(store: PresentationStore): McpServer {
+export type SlideMcpServerOptions = {
+  nativeRendering?: boolean;
+};
+
+function bytesToBase64(bytes: Uint8Array): string {
+  const chunkSize = 0x8000;
+  let binary = "";
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    binary += String.fromCharCode(
+      ...bytes.subarray(offset, offset + chunkSize),
+    );
+  }
+  return btoa(binary);
+}
+
+export function createSlideMcpServer(
+  store: PresentationStore,
+  options: SlideMcpServerOptions = {},
+): McpServer {
+  const nativeRendering = options.nativeRendering ?? true;
   const server = new McpServer({
     name: "takos-slide",
     version: "1.0.0",
@@ -25,6 +45,81 @@ export function createSlideMcpServer(store: PresentationStore): McpServer {
     content: [{ type: "text" as const, text: s }],
   });
   const json = (v: unknown) => text(JSON.stringify(v, null, 2));
+
+  const MAX_ID_LENGTH = 128;
+  const MAX_TITLE_LENGTH = 200;
+  const MAX_TEXT_LENGTH = 10_000;
+  const MAX_CSS_VALUE_LENGTH = 200;
+  const MAX_URL_LENGTH = 2_048;
+  const MIN_COORDINATE = -5_000;
+  const MAX_COORDINATE = 5_000;
+  const MIN_SIZE = 1;
+  const MAX_SIZE = 5_000;
+  const MAX_SLIDES = 500;
+  const MIN_SCREENSHOT_WIDTH = 320;
+  const MAX_SCREENSHOT_WIDTH = 2_400;
+  const MIN_SCREENSHOT_HEIGHT = 180;
+  const MAX_SCREENSHOT_HEIGHT = 1_600;
+
+  const idSchema = z.string().trim().min(1).max(MAX_ID_LENGTH);
+  const titleSchema = z.string().max(MAX_TITLE_LENGTH);
+  const slideIndexSchema = z.number().int().min(0).max(MAX_SLIDES);
+  const coordinateSchema = z.number().min(MIN_COORDINATE).max(MAX_COORDINATE);
+  const sizeSchema = z.number().min(MIN_SIZE).max(MAX_SIZE);
+  const cssValueSchema = z
+    .string()
+    .trim()
+    .min(1)
+    .max(MAX_CSS_VALUE_LENGTH)
+    .refine((value) => !/[<>{};]/.test(value) && !/\burl\s*\(/i.test(value), {
+      message: "Must be a safe CSS color or gradient",
+    });
+  const imageUrlSchema = z
+    .string()
+    .trim()
+    .min(1)
+    .max(MAX_URL_LENGTH)
+    .refine((value) => {
+      if (
+        /^data:image\/(?:png|jpeg|jpg|gif|webp);base64,[a-z0-9+/=\s]+$/i
+          .test(value)
+      ) {
+        return value.length <= 100_000;
+      }
+      try {
+        const parsed = new URL(value);
+        return parsed.protocol === "http:" || parsed.protocol === "https:";
+      } catch {
+        return false;
+      }
+    }, { message: "Must be an http(s) URL or supported data image" });
+  const elementUpdateSchema = z
+    .object({
+      x: coordinateSchema.optional(),
+      y: coordinateSchema.optional(),
+      width: sizeSchema.optional(),
+      height: sizeSchema.optional(),
+      rotation: z.number().min(-360).max(360).optional(),
+      text: z.string().max(MAX_TEXT_LENGTH).optional(),
+      fontSize: z.number().int().min(1).max(200).optional(),
+      fontFamily: z.string().trim().min(1).max(120).refine(
+        (value) => !/[<>{};]/.test(value),
+        { message: "Must be a safe font family string" },
+      ).optional(),
+      fontColor: cssValueSchema.optional(),
+      textAlign: z.enum(["left", "center", "right"]).optional(),
+      bold: z.boolean().optional(),
+      italic: z.boolean().optional(),
+      shapeType: z.enum(["rect", "ellipse", "triangle", "arrow"]).optional(),
+      fillColor: cssValueSchema.optional(),
+      strokeColor: cssValueSchema.optional(),
+      strokeWidth: z.number().min(0).max(100).optional(),
+      imageUrl: imageUrlSchema.optional(),
+    })
+    .strict()
+    .refine((value) => Object.keys(value).length > 0, {
+      message: "At least one property is required",
+    });
 
   // =========================================================================
   // Presentation Management
@@ -40,14 +135,14 @@ export function createSlideMcpServer(store: PresentationStore): McpServer {
   server.tool(
     "slide_create",
     "Create a new presentation with one blank slide.",
-    { title: z.string().describe("Presentation title") },
+    { title: titleSchema.describe("Presentation title") },
     async ({ title }: { title: string }) => json(await store.create(title)),
   );
 
   server.tool(
     "slide_get",
     "Get full presentation data including all slides and elements.",
-    { id: z.string().describe("Presentation ID") },
+    { id: idSchema.describe("Presentation ID") },
     async ({ id }: { id: string }) => {
       const p = await store.get(id);
       if (!p) return text(`Presentation not found: ${id}`);
@@ -58,7 +153,7 @@ export function createSlideMcpServer(store: PresentationStore): McpServer {
   server.tool(
     "slide_delete",
     "Delete a presentation.",
-    { id: z.string().describe("Presentation ID") },
+    { id: idSchema.describe("Presentation ID") },
     async ({ id }: { id: string }) => {
       const ok = await store.delete(id);
       if (!ok) return text(`Presentation not found: ${id}`);
@@ -70,8 +165,8 @@ export function createSlideMcpServer(store: PresentationStore): McpServer {
     "slide_set_title",
     "Rename a presentation.",
     {
-      id: z.string().describe("Presentation ID"),
-      title: z.string().describe("New title"),
+      id: idSchema.describe("Presentation ID"),
+      title: titleSchema.describe("New title"),
     },
     async ({ id, title }: { id: string; title: string }) => {
       try {
@@ -90,13 +185,15 @@ export function createSlideMcpServer(store: PresentationStore): McpServer {
     "slide_add",
     "Add a new blank slide to a presentation.",
     {
-      presentationId: z.string().describe("Presentation ID"),
+      presentationId: idSchema.describe("Presentation ID"),
       index: z
         .number()
+        .int()
+        .min(0)
+        .max(MAX_SLIDES)
         .optional()
         .describe("Insert position (0-based). Appended if omitted."),
-      background: z
-        .string()
+      background: cssValueSchema
         .optional()
         .describe('CSS color or gradient (default: "#ffffff")'),
     },
@@ -121,8 +218,8 @@ export function createSlideMcpServer(store: PresentationStore): McpServer {
     "slide_remove",
     "Remove a slide from a presentation.",
     {
-      presentationId: z.string().describe("Presentation ID"),
-      slideIndex: z.number().describe("0-based slide index"),
+      presentationId: idSchema.describe("Presentation ID"),
+      slideIndex: slideIndexSchema.describe("0-based slide index"),
     },
     async ({
       presentationId,
@@ -144,9 +241,9 @@ export function createSlideMcpServer(store: PresentationStore): McpServer {
     "slide_reorder",
     "Move a slide from one position to another.",
     {
-      presentationId: z.string().describe("Presentation ID"),
-      fromIndex: z.number().describe("Current 0-based index"),
-      toIndex: z.number().describe("Target 0-based index"),
+      presentationId: idSchema.describe("Presentation ID"),
+      fromIndex: slideIndexSchema.describe("Current 0-based index"),
+      toIndex: slideIndexSchema.describe("Target 0-based index"),
     },
     async ({
       presentationId,
@@ -170,9 +267,9 @@ export function createSlideMcpServer(store: PresentationStore): McpServer {
     "slide_set_background",
     "Set the background of a slide (CSS color or gradient).",
     {
-      presentationId: z.string().describe("Presentation ID"),
-      slideIndex: z.number().describe("0-based slide index"),
-      background: z.string().describe("CSS color or gradient value"),
+      presentationId: idSchema.describe("Presentation ID"),
+      slideIndex: slideIndexSchema.describe("0-based slide index"),
+      background: cssValueSchema.describe("CSS color or gradient value"),
     },
     async ({
       presentationId,
@@ -196,8 +293,8 @@ export function createSlideMcpServer(store: PresentationStore): McpServer {
     "slide_duplicate",
     "Duplicate a slide (inserted immediately after the original).",
     {
-      presentationId: z.string().describe("Presentation ID"),
-      slideIndex: z.number().describe("0-based slide index to duplicate"),
+      presentationId: idSchema.describe("Presentation ID"),
+      slideIndex: slideIndexSchema.describe("0-based slide index to duplicate"),
     },
     async ({
       presentationId,
@@ -222,19 +319,21 @@ export function createSlideMcpServer(store: PresentationStore): McpServer {
     "slide_add_text",
     "Add a text box element to a slide.",
     {
-      presentationId: z.string().describe("Presentation ID"),
-      slideIndex: z.number().describe("0-based slide index"),
-      text: z.string().describe("Text content"),
-      x: z.number().describe("X position in pixels"),
-      y: z.number().describe("Y position in pixels"),
-      width: z.number().optional().describe("Width in pixels (default: 300)"),
-      height: z.number().optional().describe("Height in pixels (default: 60)"),
+      presentationId: idSchema.describe("Presentation ID"),
+      slideIndex: slideIndexSchema.describe("0-based slide index"),
+      text: z.string().max(MAX_TEXT_LENGTH).describe("Text content"),
+      x: coordinateSchema.describe("X position in pixels"),
+      y: coordinateSchema.describe("Y position in pixels"),
+      width: sizeSchema.optional().describe("Width in pixels (default: 300)"),
+      height: sizeSchema.optional().describe("Height in pixels (default: 60)"),
       fontSize: z
         .number()
+        .int()
+        .min(1)
+        .max(200)
         .optional()
         .describe("Font size in pixels (default: 24)"),
-      fontColor: z
-        .string()
+      fontColor: cssValueSchema
         .optional()
         .describe('Font color CSS value (default: "#333333")'),
       bold: z.boolean().optional().describe("Bold text (default: false)"),
@@ -277,21 +376,19 @@ export function createSlideMcpServer(store: PresentationStore): McpServer {
     "slide_add_shape",
     "Add a shape element to a slide.",
     {
-      presentationId: z.string().describe("Presentation ID"),
-      slideIndex: z.number().describe("0-based slide index"),
+      presentationId: idSchema.describe("Presentation ID"),
+      slideIndex: slideIndexSchema.describe("0-based slide index"),
       shapeType: z
         .enum(["rect", "ellipse", "triangle", "arrow"])
         .describe("Shape type"),
-      x: z.number().describe("X position in pixels"),
-      y: z.number().describe("Y position in pixels"),
-      width: z.number().describe("Width in pixels"),
-      height: z.number().describe("Height in pixels"),
-      fillColor: z
-        .string()
+      x: coordinateSchema.describe("X position in pixels"),
+      y: coordinateSchema.describe("Y position in pixels"),
+      width: sizeSchema.describe("Width in pixels"),
+      height: sizeSchema.describe("Height in pixels"),
+      fillColor: cssValueSchema
         .optional()
         .describe('Fill color (default: "#4f87e0")'),
-      strokeColor: z
-        .string()
+      strokeColor: cssValueSchema
         .optional()
         .describe('Stroke color (default: "#2563eb")'),
     },
@@ -328,13 +425,13 @@ export function createSlideMcpServer(store: PresentationStore): McpServer {
     "slide_add_image",
     "Add an image element to a slide.",
     {
-      presentationId: z.string().describe("Presentation ID"),
-      slideIndex: z.number().describe("0-based slide index"),
-      imageUrl: z.string().describe("Image URL"),
-      x: z.number().describe("X position in pixels"),
-      y: z.number().describe("Y position in pixels"),
-      width: z.number().optional().describe("Width in pixels (default: 300)"),
-      height: z.number().optional().describe("Height in pixels (default: 200)"),
+      presentationId: idSchema.describe("Presentation ID"),
+      slideIndex: slideIndexSchema.describe("0-based slide index"),
+      imageUrl: imageUrlSchema.describe("Image URL"),
+      x: coordinateSchema.describe("X position in pixels"),
+      y: coordinateSchema.describe("Y position in pixels"),
+      width: sizeSchema.optional().describe("Width in pixels (default: 300)"),
+      height: sizeSchema.optional().describe("Height in pixels (default: 200)"),
     },
     async (args: {
       presentationId: string;
@@ -365,9 +462,9 @@ export function createSlideMcpServer(store: PresentationStore): McpServer {
     "slide_remove_element",
     "Remove an element from a slide.",
     {
-      presentationId: z.string().describe("Presentation ID"),
-      slideIndex: z.number().describe("0-based slide index"),
-      elementId: z.string().describe("Element ID"),
+      presentationId: idSchema.describe("Presentation ID"),
+      slideIndex: slideIndexSchema.describe("0-based slide index"),
+      elementId: idSchema.describe("Element ID"),
     },
     async ({
       presentationId,
@@ -391,14 +488,12 @@ export function createSlideMcpServer(store: PresentationStore): McpServer {
     "slide_update_element",
     "Update properties of an existing element.",
     {
-      presentationId: z.string().describe("Presentation ID"),
-      slideIndex: z.number().describe("0-based slide index"),
-      elementId: z.string().describe("Element ID"),
-      properties: z
-        .record(z.unknown())
-        .describe(
-          "Partial element properties to merge (e.g. { text, fontSize, fillColor, ... })",
-        ),
+      presentationId: idSchema.describe("Presentation ID"),
+      slideIndex: slideIndexSchema.describe("0-based slide index"),
+      elementId: idSchema.describe("Element ID"),
+      properties: elementUpdateSchema.describe(
+        "Whitelisted element properties to update",
+      ),
     },
     async ({
       presentationId,
@@ -430,11 +525,11 @@ export function createSlideMcpServer(store: PresentationStore): McpServer {
     "slide_move_element",
     "Move an element to a new position.",
     {
-      presentationId: z.string().describe("Presentation ID"),
-      slideIndex: z.number().describe("0-based slide index"),
-      elementId: z.string().describe("Element ID"),
-      x: z.number().describe("New X position in pixels"),
-      y: z.number().describe("New Y position in pixels"),
+      presentationId: idSchema.describe("Presentation ID"),
+      slideIndex: slideIndexSchema.describe("0-based slide index"),
+      elementId: idSchema.describe("Element ID"),
+      x: coordinateSchema.describe("New X position in pixels"),
+      y: coordinateSchema.describe("New Y position in pixels"),
     },
     async ({
       presentationId,
@@ -463,11 +558,11 @@ export function createSlideMcpServer(store: PresentationStore): McpServer {
     "slide_resize_element",
     "Resize an element.",
     {
-      presentationId: z.string().describe("Presentation ID"),
-      slideIndex: z.number().describe("0-based slide index"),
-      elementId: z.string().describe("Element ID"),
-      width: z.number().describe("New width in pixels"),
-      height: z.number().describe("New height in pixels"),
+      presentationId: idSchema.describe("Presentation ID"),
+      slideIndex: slideIndexSchema.describe("0-based slide index"),
+      elementId: idSchema.describe("Element ID"),
+      width: sizeSchema.describe("New width in pixels"),
+      height: sizeSchema.describe("New height in pixels"),
     },
     async ({
       presentationId,
@@ -506,14 +601,20 @@ export function createSlideMcpServer(store: PresentationStore): McpServer {
     "slide_screenshot",
     "Take a screenshot of a slide as a PNG image for visual inspection.",
     {
-      presentationId: z.string().describe("Presentation ID"),
-      slideIndex: z.number().describe("Slide index (0-based)"),
+      presentationId: idSchema.describe("Presentation ID"),
+      slideIndex: slideIndexSchema.describe("Slide index (0-based)"),
       width: z
         .number()
+        .int()
+        .min(MIN_SCREENSHOT_WIDTH)
+        .max(MAX_SCREENSHOT_WIDTH)
         .optional()
         .describe("Image width in pixels (default: 1280)"),
       height: z
         .number()
+        .int()
+        .min(MIN_SCREENSHOT_HEIGHT)
+        .max(MAX_SCREENSHOT_HEIGHT)
         .optional()
         .describe("Image height in pixels (default: 720)"),
     },
@@ -538,8 +639,23 @@ export function createSlideMcpServer(store: PresentationStore): McpServer {
       }
 
       try {
-        const buf = renderSlideToBuffer(slide, width ?? 1280, height ?? 720);
-        const base64 = buf.toString("base64");
+        if (!nativeRendering) {
+          return text("slide_screenshot is unavailable in this runtime");
+        }
+        const safeWidth = Math.min(
+          MAX_SCREENSHOT_WIDTH,
+          Math.max(MIN_SCREENSHOT_WIDTH, Math.trunc(width ?? 1280)),
+        );
+        const safeHeight = Math.min(
+          MAX_SCREENSHOT_HEIGHT,
+          Math.max(MIN_SCREENSHOT_HEIGHT, Math.trunc(height ?? 720)),
+        );
+        const rendererModule = "./lib/server-renderer.ts";
+        const { renderSlideToBuffer } = await import(
+          rendererModule
+        ) as typeof import("./lib/server-renderer.ts");
+        const buf = renderSlideToBuffer(slide, safeWidth, safeHeight);
+        const base64 = bytesToBase64(buf);
         return {
           content: [
             {
@@ -562,7 +678,7 @@ export function createSlideMcpServer(store: PresentationStore): McpServer {
   server.tool(
     "slide_export_json",
     "Export a presentation as JSON.",
-    { id: z.string().describe("Presentation ID") },
+    { id: idSchema.describe("Presentation ID") },
     async ({ id }: { id: string }) => {
       try {
         return json(await store.exportJson(id));
@@ -573,12 +689,139 @@ export function createSlideMcpServer(store: PresentationStore): McpServer {
   );
 
   server.tool(
+    "slide_export_pdf",
+    "Export a presentation as a PDF file. Returns base64-encoded PDF data.",
+    { id: idSchema.describe("Presentation ID") },
+    async ({ id }: { id: string }) => {
+      try {
+        const pdfBytes = await store.exportPdf(id);
+        const base64 = bytesToBase64(pdfBytes);
+        return text(base64);
+      } catch (e) {
+        return text(`Failed to export PDF: ${String(e)}`);
+      }
+    },
+  );
+
+  server.tool(
     "slide_get_slide_count",
     "Get the number of slides in a presentation.",
-    { id: z.string().describe("Presentation ID") },
+    { id: idSchema.describe("Presentation ID") },
     async ({ id }: { id: string }) => {
       try {
         return json({ slideCount: await store.getSlideCount(id) });
+      } catch (e) {
+        return text(String(e));
+      }
+    },
+  );
+
+  // =========================================================================
+  // Transitions
+  // =========================================================================
+
+  server.tool(
+    "slide_set_transition",
+    "Set a transition effect for a slide. The transition plays when navigating to this slide during presentation.",
+    {
+      presentationId: idSchema.describe("Presentation ID"),
+      slideIndex: slideIndexSchema.describe("0-based slide index"),
+      type: z
+        .enum(["none", "fade", "slide-left", "slide-right", "slide-up", "zoom"])
+        .describe("Transition type"),
+      duration: z
+        .number()
+        .int()
+        .min(0)
+        .max(10_000)
+        .optional()
+        .describe("Transition duration in milliseconds (default: 500)"),
+    },
+    async ({
+      presentationId,
+      slideIndex,
+      type,
+      duration,
+    }: {
+      presentationId: string;
+      slideIndex: number;
+      type:
+        | "none"
+        | "fade"
+        | "slide-left"
+        | "slide-right"
+        | "slide-up"
+        | "zoom";
+      duration?: number;
+    }) => {
+      try {
+        await store.setSlideTransition(presentationId, slideIndex, {
+          type,
+          duration: duration ?? 500,
+        });
+        return text("Transition updated");
+      } catch (e) {
+        return text(String(e));
+      }
+    },
+  );
+
+  // =========================================================================
+  // Templates
+  // =========================================================================
+
+  server.tool(
+    "slide_list_templates",
+    "List all available built-in slide templates.",
+    {},
+    () => json(store.listTemplates()),
+  );
+
+  server.tool(
+    "slide_create_from_template",
+    "Create a new presentation from a built-in template.",
+    {
+      title: titleSchema.describe("Presentation title"),
+      templateId: z.string().trim().min(1).max(80).describe(
+        "Template ID (e.g. 'title-slide', 'two-column')",
+      ),
+    },
+    async ({ title, templateId }: { title: string; templateId: string }) => {
+      try {
+        return json(await store.createFromTemplate(title, templateId));
+      } catch (e) {
+        return text(String(e));
+      }
+    },
+  );
+
+  server.tool(
+    "slide_add_from_template",
+    "Add a slide from a built-in template to an existing presentation.",
+    {
+      presentationId: idSchema.describe("Presentation ID"),
+      templateId: z.string().trim().min(1).max(80).describe("Template ID"),
+      index: z
+        .number()
+        .int()
+        .min(0)
+        .max(MAX_SLIDES)
+        .optional()
+        .describe("Insert position (0-based). Appended if omitted."),
+    },
+    async ({
+      presentationId,
+      templateId,
+      index,
+    }: {
+      presentationId: string;
+      templateId: string;
+      index?: number;
+    }) => {
+      try {
+        return json(
+          await store.addSlideFromTemplate(presentationId, templateId, index),
+        );
       } catch (e) {
         return text(String(e));
       }

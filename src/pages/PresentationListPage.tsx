@@ -1,26 +1,31 @@
-import { createSignal, For, Show } from "solid-js";
+import { createSignal, For, onMount, Show } from "solid-js";
 import { useNavigate } from "@solidjs/router";
 import type { Presentation } from "../types";
 import {
   createPresentation,
   deletePresentation,
-  loadPresentations,
+  loadPresentationsFromApi,
+  savePresentation,
 } from "../lib/storage";
 import PresentationCard from "../components/PresentationCard";
 
 export default function PresentationListPage() {
   const navigate = useNavigate();
-  const [presentations, setPresentations] = createSignal<Presentation[]>(
-    loadPresentations(),
-  );
+  const [presentations, setPresentations] = createSignal<Presentation[]>([]);
+  const [isLoading, setIsLoading] = createSignal(true);
   const [showNewDialog, setShowNewDialog] = createSignal(false);
   const [newTitle, setNewTitle] = createSignal("Untitled Presentation");
 
+  onMount(() => {
+    void loadPresentationsFromApi()
+      .then(setPresentations)
+      .catch(() => undefined)
+      .finally(() => setIsLoading(false));
+  });
+
   const handleCreate = () => {
     const pres = createPresentation(newTitle());
-    const all = loadPresentations();
-    all.push(pres);
-    localStorage.setItem("takos-slide-presentations", JSON.stringify(all));
+    const all = savePresentation(pres);
     setPresentations(all);
     setShowNewDialog(false);
     setNewTitle("Untitled Presentation");
@@ -40,6 +45,7 @@ export default function PresentationListPage() {
         <div class="max-w-6xl mx-auto flex items-center justify-between">
           <h1 class="text-xl font-bold text-gray-100">Takos Slide</h1>
           <button
+            type="button"
             class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
             onClick={() => setShowNewDialog(true)}
           >
@@ -53,21 +59,24 @@ export default function PresentationListPage() {
         <Show
           when={presentations().length > 0}
           fallback={
-            <div class="text-center py-24">
-              <div class="text-6xl mb-4 text-gray-600">&#9657;</div>
-              <h2 class="text-lg font-semibold text-gray-300 mb-2">
-                No presentations yet
-              </h2>
-              <p class="text-sm text-gray-500 mb-6">
-                Create your first presentation to get started
-              </p>
-              <button
-                class="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2.5 rounded-lg text-sm font-medium transition-colors"
-                onClick={() => setShowNewDialog(true)}
-              >
-                Create Presentation
-              </button>
-            </div>
+            <Show when={!isLoading()}>
+              <div class="text-center py-24">
+                <div class="text-6xl mb-4 text-gray-600">&#9657;</div>
+                <h2 class="text-lg font-semibold text-gray-300 mb-2">
+                  No presentations yet
+                </h2>
+                <p class="text-sm text-gray-500 mb-6">
+                  Create your first presentation to get started
+                </p>
+                <button
+                  type="button"
+                  class="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2.5 rounded-lg text-sm font-medium transition-colors"
+                  onClick={() => setShowNewDialog(true)}
+                >
+                  Create Presentation
+                </button>
+              </div>
+            </Show>
           }
         >
           <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
@@ -108,12 +117,14 @@ export default function PresentationListPage() {
             />
             <div class="flex justify-end gap-3">
               <button
+                type="button"
                 class="px-4 py-2 text-sm text-gray-400 hover:text-gray-200 transition-colors"
                 onClick={() => setShowNewDialog(false)}
               >
                 Cancel
               </button>
               <button
+                type="button"
                 class="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-lg text-sm font-medium transition-colors"
                 onClick={handleCreate}
               >
