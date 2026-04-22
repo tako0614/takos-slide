@@ -1,6 +1,7 @@
 import { createEffect, For, onMount } from "solid-js";
 import type { Slide } from "../types";
 import { renderThumbnail } from "../lib/canvas-renderer";
+import { useI18n } from "../i18n";
 
 interface SlidePanelProps {
   slides: Slide[];
@@ -75,20 +76,21 @@ function SlideThumbnail(props: {
 }
 
 export default function SlidePanel(props: SlidePanelProps) {
+  const { t } = useI18n();
   let dragFromIndex: number | null = null;
 
   return (
     <div class="w-56 bg-gray-800 border-r border-gray-700 flex flex-col h-full">
       <div class="p-3 border-b border-gray-700 flex items-center justify-between">
         <span class="text-xs font-semibold text-gray-400 uppercase tracking-wider">
-          Slides
+          {t("slides")}
         </span>
         <button
           type="button"
           class="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded transition-colors"
           onClick={() => props.onAddSlide()}
         >
-          + Add
+          + {t("add")}
         </button>
       </div>
       <div class="flex-1 overflow-y-auto p-2 space-y-1">

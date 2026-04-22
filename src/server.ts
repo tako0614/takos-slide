@@ -50,27 +50,56 @@ function envFlagEnabled(env: SlideRuntimeEnv, name: string): boolean {
   return value ? ["1", "true", "yes"].includes(value.toLowerCase()) : false;
 }
 
-function authorizeMcpRequest(
-  request: Request,
-  authToken?: string,
-): Response | null {
-  if (!authToken) return null;
-  const header = request.headers.get("Authorization");
-  const token = header?.startsWith("Bearer ") ? header.slice(7) : null;
-  if (token === authToken) return null;
-  return new Response(JSON.stringify({ error: "Unauthorized" }), {
-    status: 401,
-    headers: { "Content-Type": "application/json" },
-  });
+async function constantTimeEqual(
+  left: string,
+  right: string,
+): Promise<boolean> {
+  const [leftDigest, rightDigest] = await Promise.all([
+    crypto.subtle.digest("SHA-256", new TextEncoder().encode(left)),
+    crypto.subtle.digest("SHA-256", new TextEncoder().encode(right)),
+  ]);
+  const leftBytes = new Uint8Array(leftDigest);
+  const rightBytes = new Uint8Array(rightDigest);
+  let diff = leftBytes.length ^ rightBytes.length;
+  for (
+    let index = 0;
+    index < leftBytes.length && index < rightBytes.length;
+    index++
+  ) {
+    diff |= leftBytes[index] ^ rightBytes[index];
+  }
+  return diff === 0;
 }
 
-function mcpAuthMisconfigured(env: SlideRuntimeEnv): Response | null {
-  if (!envFlagEnabled(env, "MCP_AUTH_REQUIRED")) return null;
-  if (envValue(env, "MCP_AUTH_TOKEN")) return null;
+function mcpAuthMisconfigured(
+  authToken?: string,
+  allowUnauthenticated = false,
+): Response | null {
+  if (authToken || allowUnauthenticated) return null;
   return new Response(JSON.stringify({ error: "MCP_AUTH_TOKEN is required" }), {
     status: 503,
     headers: { "Content-Type": "application/json" },
   });
+}
+
+async function authorizeMcpRequest(
+  request: Request,
+  authToken?: string,
+  allowUnauthenticated = false,
+): Promise<Response | null> {
+  const configError = mcpAuthMisconfigured(authToken, allowUnauthenticated);
+  if (configError) return configError;
+  if (!authToken) return null;
+
+  const header = request.headers.get("Authorization");
+  const token = header?.startsWith("Bearer ") ? header.slice(7) : null;
+  if (!token || !(await constantTimeEqual(token, authToken))) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+  return null;
 }
 
 async function readBoundedJsonRequest(
@@ -173,12 +202,10 @@ export function createSlideAppFromEnv(env: SlideRuntimeEnv = denoEnv()) {
   });
 
   app.all("/mcp", async (c) => {
-    const configError = mcpAuthMisconfigured(env);
-    if (configError) return configError;
-
-    const authResponse = authorizeMcpRequest(
+    const authResponse = await authorizeMcpRequest(
       c.req.raw,
       envValue(env, "MCP_AUTH_TOKEN"),
+      envFlagEnabled(env, "MCP_ALLOW_UNAUTHENTICATED"),
     );
     if (authResponse) return authResponse;
 
@@ -203,7 +230,10 @@ export function createSlideAppFromEnv(env: SlideRuntimeEnv = denoEnv()) {
   const health = (c: Context) => {
     const authError = appAuthMisconfigured(env);
     if (authError) return authError;
-    const mcpAuthError = mcpAuthMisconfigured(env);
+    const mcpAuthError = mcpAuthMisconfigured(
+      envValue(env, "MCP_AUTH_TOKEN"),
+      envFlagEnabled(env, "MCP_ALLOW_UNAUTHENTICATED"),
+    );
     if (mcpAuthError) return mcpAuthError;
     return c.json({ status: "ok" });
   };

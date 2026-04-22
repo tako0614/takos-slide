@@ -134,6 +134,7 @@ export function getPresentation(id: string): Presentation | undefined {
 export function createTextElement(
   x: number,
   y: number,
+  text = "Text",
 ): SlideElement {
   return {
     id: generateId(),
@@ -143,7 +144,7 @@ export function createTextElement(
     width: 300,
     height: 60,
     rotation: 0,
-    text: "Text",
+    text,
     fontSize: 24,
     fontFamily: "Inter, sans-serif",
     fontColor: "#333333",

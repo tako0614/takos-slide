@@ -2,28 +2,12 @@ name: takos-slide
 version: "0.1.0"
 
 publish:
-  - name: takos-api
-    publisher: takos
-    type: api-key
-    spec:
-      scopes:
-        - files:read
-        - files:write
-  - name: slide-oauth
-    publisher: takos
-    type: oauth-client
-    spec:
-      clientName: Takos Slide
-      redirectUris:
-        - /api/auth/callback
-      scopes:
-        - openid
-        - profile
-        - email
   - name: slide-ui
     publisher: web
     type: UiSurface
-    path: /
+    outputs:
+      url:
+        route: /
     title: Slide
     spec:
       description: Takos presentation editor
@@ -33,7 +17,9 @@ publish:
   - name: slide-mcp
     publisher: web
     type: McpServer
-    path: /mcp
+    outputs:
+      url:
+        route: /mcp
     title: Slide MCP
     spec:
       transport: streamable-http
@@ -44,14 +30,27 @@ compute:
     icon: /icons/slide.svg
     readiness: /healthz
     env:
-      MCP_AUTH_REQUIRED: "1"
       APP_AUTH_REQUIRED: "1"
     consume:
-      - publication: takos-api
+      - publication: takos.api-key
+        as: takos-api
+        request:
+          scopes:
+            - files:read
+            - files:write
         env:
           endpoint: TAKOS_STORAGE_API_URL
           apiKey: TAKOS_STORAGE_ACCESS_TOKEN
-      - publication: slide-oauth
+      - publication: takos.oauth-client
+        as: slide-oauth
+        request:
+          clientName: Takos Slide
+          redirectUris:
+            - /api/auth/callback
+          scopes:
+            - openid
+            - profile
+            - email
         env:
           clientId: OAUTH_CLIENT_ID
           clientSecret: OAUTH_CLIENT_SECRET

@@ -46,20 +46,21 @@ canvas renderer can be loaded.
 
 ### Environment Variables
 
-| Variable                 | Description                                      | Default                 |
-| ------------------------ | ------------------------------------------------ | ----------------------- |
-| `TAKOS_API_URL`          | Takos platform API URL                           | `http://localhost:8787` |
-| `TAKOS_ACCESS_TOKEN`     | Access token for storage API                     | (empty)                 |
-| `TAKOS_SPACE_ID`         | Storage space ID                                 | (required)              |
-| `PORT`                   | MCP server port                                  | `3003`                  |
-| `MCP_AUTH_TOKEN`         | Bearer token for `/mcp`                          | managed auto-secret     |
-| `MCP_AUTH_REQUIRED`      | Set `1` to fail closed when the token is missing | `0`                     |
-| `TAKOS_NATIVE_RENDERING` | Set `1` to enable native canvas screenshot tools | runtime-dependent       |
+| Variable                    | Description                                      | Default                 |
+| --------------------------- | ------------------------------------------------ | ----------------------- |
+| `TAKOS_API_URL`             | Takos platform API URL                           | `http://localhost:8787` |
+| `TAKOS_ACCESS_TOKEN`        | Access token for storage API                     | (empty)                 |
+| `TAKOS_SPACE_ID`            | Storage space ID                                 | (required)              |
+| `PORT`                      | MCP server port                                  | `3003`                  |
+| `MCP_AUTH_TOKEN`            | Bearer token for `/mcp`                          | managed auto-secret     |
+| `MCP_ALLOW_UNAUTHENTICATED` | Set `1` to allow `/mcp` without a bearer token   | `0`                     |
+| `TAKOS_NATIVE_RENDERING`    | Set `1` to enable native canvas screenshot tools | runtime-dependent       |
 
 In managed Takos deploys, `.takos/app.yml` publishes `slide-mcp` with
-`spec.authSecretRef: MCP_AUTH_TOKEN` and sets `MCP_AUTH_REQUIRED=1`. Takos
-generates the `MCP_AUTH_TOKEN` service secret env when it is missing, and MCP
-clients resolve that token from the owner service.
+`spec.authSecretRef: MCP_AUTH_TOKEN`. Takos generates the `MCP_AUTH_TOKEN`
+service secret env when it is missing, and MCP clients resolve that token from
+the owner service. Local development can opt into unauthenticated `/mcp` access
+with `MCP_ALLOW_UNAUTHENTICATED=true` when no token is configured.
 
 ## Available MCP Tools
 

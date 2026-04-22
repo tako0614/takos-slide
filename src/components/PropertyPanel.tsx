@@ -1,6 +1,7 @@
 import { Show } from "solid-js";
 import type { JSX } from "solid-js";
 import type { SlideElement } from "../types";
+import { useI18n } from "../i18n";
 
 interface PropertyPanelProps {
   element: SlideElement | null;
@@ -12,7 +13,7 @@ interface PropertyPanelProps {
 function PropertyRow(props: { label: string; children: JSX.Element }) {
   return (
     <div class="flex items-center justify-between gap-2">
-      <label class="text-xs text-gray-400 shrink-0 w-16">{props.label}</label>
+      <label class="text-xs text-gray-400 shrink-0 w-20">{props.label}</label>
       <div class="flex-1">{props.children}</div>
     </div>
   );
@@ -59,6 +60,7 @@ function ColorInput(props: { value: string; onChange: (v: string) => void }) {
 }
 
 export default function PropertyPanel(props: PropertyPanelProps) {
+  const { t } = useI18n();
   const el = () => props.element;
   const update = (patch: Partial<SlideElement>) => {
     if (!el()) return;
@@ -69,7 +71,7 @@ export default function PropertyPanel(props: PropertyPanelProps) {
     <div class="w-60 bg-gray-800 border-l border-gray-700 flex flex-col h-full overflow-y-auto">
       <div class="p-3 border-b border-gray-700">
         <span class="text-xs font-semibold text-gray-400 uppercase tracking-wider">
-          Properties
+          {t("properties")}
         </span>
       </div>
 
@@ -77,7 +79,7 @@ export default function PropertyPanel(props: PropertyPanelProps) {
         {/* Slide background */}
         <div class="space-y-2">
           <span class="text-xs font-medium text-gray-300">
-            Slide Background
+            {t("slideBackground")}
           </span>
           <ColorInput
             value={props.slideBackground}
@@ -88,7 +90,9 @@ export default function PropertyPanel(props: PropertyPanelProps) {
         <Show when={el()}>
           <div class="border-t border-gray-700 pt-3 space-y-3">
             {/* Position */}
-            <span class="text-xs font-medium text-gray-300">Position</span>
+            <span class="text-xs font-medium text-gray-300">
+              {t("position")}
+            </span>
             <div class="grid grid-cols-2 gap-2">
               <PropertyRow label="X">
                 <NumberInput
@@ -105,7 +109,7 @@ export default function PropertyPanel(props: PropertyPanelProps) {
             </div>
 
             {/* Size */}
-            <span class="text-xs font-medium text-gray-300">Size</span>
+            <span class="text-xs font-medium text-gray-300">{t("size")}</span>
             <div class="grid grid-cols-2 gap-2">
               <PropertyRow label="W">
                 <NumberInput
@@ -124,7 +128,7 @@ export default function PropertyPanel(props: PropertyPanelProps) {
             </div>
 
             {/* Rotation */}
-            <PropertyRow label="Rotation">
+            <PropertyRow label={t("rotation")}>
               <NumberInput
                 value={el()!.rotation}
                 onChange={(v) => update({ rotation: v })}
@@ -134,27 +138,29 @@ export default function PropertyPanel(props: PropertyPanelProps) {
             {/* Text properties */}
             <Show when={el()!.type === "text"}>
               <div class="border-t border-gray-700 pt-3 space-y-2">
-                <span class="text-xs font-medium text-gray-300">Text</span>
+                <span class="text-xs font-medium text-gray-300">
+                  {t("text")}
+                </span>
                 <textarea
                   class="w-full bg-gray-700 text-gray-200 text-xs px-2 py-1.5 rounded border border-gray-600 outline-none focus:border-blue-500 resize-none"
                   rows={3}
                   value={el()!.text ?? ""}
                   onInput={(e) => update({ text: e.currentTarget.value })}
                 />
-                <PropertyRow label="Font Size">
+                <PropertyRow label={t("fontSize")}>
                   <NumberInput
                     value={el()!.fontSize ?? 24}
                     onChange={(v) => update({ fontSize: v })}
                     min={8}
                   />
                 </PropertyRow>
-                <PropertyRow label="Color">
+                <PropertyRow label={t("color")}>
                   <ColorInput
                     value={el()!.fontColor ?? "#333333"}
                     onChange={(v) => update({ fontColor: v })}
                   />
                 </PropertyRow>
-                <PropertyRow label="Align">
+                <PropertyRow label={t("align")}>
                   <select
                     class="w-full bg-gray-700 text-gray-200 text-xs px-2 py-1 rounded border border-gray-600 outline-none"
                     value={el()!.textAlign ?? "left"}
@@ -166,9 +172,9 @@ export default function PropertyPanel(props: PropertyPanelProps) {
                           | "right",
                       })}
                   >
-                    <option value="left">Left</option>
-                    <option value="center">Center</option>
-                    <option value="right">Right</option>
+                    <option value="left">{t("alignLeft")}</option>
+                    <option value="center">{t("alignCenter")}</option>
+                    <option value="right">{t("alignRight")}</option>
                   </select>
                 </PropertyRow>
                 <div class="flex gap-2">
@@ -203,20 +209,22 @@ export default function PropertyPanel(props: PropertyPanelProps) {
             {/* Shape properties */}
             <Show when={el()!.type === "shape"}>
               <div class="border-t border-gray-700 pt-3 space-y-2">
-                <span class="text-xs font-medium text-gray-300">Shape</span>
-                <PropertyRow label="Fill">
+                <span class="text-xs font-medium text-gray-300">
+                  {t("shape")}
+                </span>
+                <PropertyRow label={t("fill")}>
                   <ColorInput
                     value={el()!.fillColor ?? "#4f87e0"}
                     onChange={(v) => update({ fillColor: v })}
                   />
                 </PropertyRow>
-                <PropertyRow label="Stroke">
+                <PropertyRow label={t("stroke")}>
                   <ColorInput
                     value={el()!.strokeColor ?? "#2563eb"}
                     onChange={(v) => update({ strokeColor: v })}
                   />
                 </PropertyRow>
-                <PropertyRow label="Stroke W">
+                <PropertyRow label={t("strokeWidth")}>
                   <NumberInput
                     value={el()!.strokeWidth ?? 2}
                     onChange={(v) => update({ strokeWidth: v })}
@@ -229,8 +237,10 @@ export default function PropertyPanel(props: PropertyPanelProps) {
             {/* Image properties */}
             <Show when={el()!.type === "image"}>
               <div class="border-t border-gray-700 pt-3 space-y-2">
-                <span class="text-xs font-medium text-gray-300">Image</span>
-                <PropertyRow label="URL">
+                <span class="text-xs font-medium text-gray-300">
+                  {t("image")}
+                </span>
+                <PropertyRow label={t("imageUrl")}>
                   <input
                     type="text"
                     class="w-full bg-gray-700 text-gray-200 text-xs px-2 py-1 rounded border border-gray-600 outline-none focus:border-blue-500"
@@ -246,7 +256,7 @@ export default function PropertyPanel(props: PropertyPanelProps) {
 
         <Show when={!el()}>
           <div class="text-xs text-gray-500 text-center py-8">
-            Select an element to edit its properties
+            {t("selectElementToEdit")}
           </div>
         </Show>
       </div>

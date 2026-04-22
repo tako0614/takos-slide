@@ -1,3 +1,6 @@
+import LanguageSwitcher from "./LanguageSwitcher";
+import { useI18n } from "../i18n";
+
 interface ShapeToolbarProps {
   onInsertText: () => void;
   onInsertShape: (shape: "rect" | "ellipse" | "triangle" | "arrow") => void;
@@ -39,6 +42,8 @@ function ToolButton(props: {
 }
 
 export default function ShapeToolbar(props: ShapeToolbarProps) {
+  const { t } = useI18n();
+
   return (
     <div class="h-12 bg-gray-800 border-b border-gray-700 flex items-center px-4 gap-2">
       {/* Title */}
@@ -51,41 +56,41 @@ export default function ShapeToolbar(props: ShapeToolbarProps) {
       <div class="w-px h-6 bg-gray-600 mx-2" />
 
       {/* Insert tools */}
-      <span class="text-xs text-gray-500 mr-1">Insert:</span>
-      <ToolButton label="Text" onClick={() => props.onInsertText()} />
+      <span class="text-xs text-gray-500 mr-1">{t("insert")}</span>
+      <ToolButton label={t("text")} onClick={() => props.onInsertText()} />
       <ToolButton
-        label="Rect"
+        label={t("rect")}
         onClick={() => props.onInsertShape("rect")}
       />
       <ToolButton
-        label="Ellipse"
+        label={t("ellipse")}
         onClick={() => props.onInsertShape("ellipse")}
       />
       <ToolButton
-        label="Triangle"
+        label={t("triangle")}
         onClick={() => props.onInsertShape("triangle")}
       />
       <ToolButton
-        label="Arrow"
+        label={t("arrow")}
         onClick={() => props.onInsertShape("arrow")}
       />
-      <ToolButton label="Image" onClick={() => props.onInsertImage()} />
+      <ToolButton label={t("image")} onClick={() => props.onInsertImage()} />
 
       <div class="w-px h-6 bg-gray-600 mx-2" />
 
       {/* Edit tools */}
       <ToolButton
-        label="Undo"
+        label={t("undo")}
         onClick={() => props.onUndo()}
         disabled={!props.canUndo}
       />
       <ToolButton
-        label="Redo"
+        label={t("redo")}
         onClick={() => props.onRedo()}
         disabled={!props.canRedo}
       />
       <ToolButton
-        label="Delete"
+        label={t("delete")}
         onClick={() => props.onDelete()}
         disabled={!props.hasSelection}
         variant="danger"
@@ -94,8 +99,9 @@ export default function ShapeToolbar(props: ShapeToolbarProps) {
       <div class="flex-1" />
 
       {/* Present */}
+      <LanguageSwitcher />
       <ToolButton
-        label="Present"
+        label={t("present")}
         onClick={() => props.onPresent()}
         variant="primary"
       />

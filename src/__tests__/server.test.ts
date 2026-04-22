@@ -9,6 +9,7 @@ const env = {
   TAKOS_ACCESS_TOKEN: "token",
   TAKOS_SPACE_ID: "space-1",
   TAKOS_NATIVE_RENDERING: "0",
+  MCP_AUTH_TOKEN: "secret",
 };
 
 Deno.test("health endpoint returns ok", async () => {
@@ -46,6 +47,7 @@ Deno.test("mcp endpoint rejects oversized request bodies", async () => {
     new Request("http://localhost/mcp", {
       method: "POST",
       headers: {
+        "Authorization": "Bearer secret",
         "content-type": "application/json",
         "content-length": String(SLIDE_MAX_MCP_REQUEST_BYTES + 1),
       },
@@ -58,10 +60,7 @@ Deno.test("mcp endpoint rejects oversized request bodies", async () => {
 });
 
 Deno.test("mcp endpoint enforces optional bearer auth before handling body", async () => {
-  const app = createSlideAppFromEnv({
-    ...env,
-    MCP_AUTH_TOKEN: "secret",
-  });
+  const app = createSlideAppFromEnv(env);
   const res = await app.request(
     new Request("http://localhost/mcp", {
       method: "POST",
@@ -74,10 +73,10 @@ Deno.test("mcp endpoint enforces optional bearer auth before handling body", asy
   assertEquals(await res.json(), { error: "Unauthorized" });
 });
 
-Deno.test("mcp endpoint fails closed when managed auth is required but token is missing", async () => {
+Deno.test("mcp endpoint fails closed when token is missing", async () => {
   const app = createSlideAppFromEnv({
     ...env,
-    MCP_AUTH_REQUIRED: "1",
+    MCP_AUTH_TOKEN: undefined,
   });
   const res = await app.request(
     new Request("http://localhost/mcp", {
@@ -91,10 +90,22 @@ Deno.test("mcp endpoint fails closed when managed auth is required but token is 
   assertEquals(await res.json(), { error: "MCP_AUTH_TOKEN is required" });
 });
 
-Deno.test("health endpoint fails when managed mcp auth is required but token is missing", async () => {
+Deno.test("health endpoint allows explicit unauthenticated access when configured", async () => {
   const app = createSlideAppFromEnv({
     ...env,
-    MCP_AUTH_REQUIRED: "1",
+    MCP_AUTH_TOKEN: undefined,
+    MCP_ALLOW_UNAUTHENTICATED: "true",
+  });
+  const res = await app.request("/health");
+
+  assertEquals(res.status, 200);
+  assertEquals(await res.json(), { status: "ok" });
+});
+
+Deno.test("health endpoint fails when token is missing", async () => {
+  const app = createSlideAppFromEnv({
+    ...env,
+    MCP_AUTH_TOKEN: undefined,
   });
   const res = await app.request("/health");
 

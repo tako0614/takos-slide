@@ -1,6 +1,7 @@
 import { createEffect, createSignal, onMount } from "solid-js";
 import type { Presentation } from "../types";
 import { renderThumbnail } from "../lib/canvas-renderer";
+import { dateLocale, useI18n } from "../i18n";
 
 interface PresentationCardProps {
   presentation: Presentation;
@@ -9,6 +10,7 @@ interface PresentationCardProps {
 }
 
 export default function PresentationCard(props: PresentationCardProps) {
+  const { t } = useI18n();
   let thumbnailRef: HTMLDivElement | undefined;
   const [hovered, setHovered] = createSignal(false);
 
@@ -31,7 +33,7 @@ export default function PresentationCard(props: PresentationCardProps) {
 
   const formatDate = (iso: string) => {
     const d = new Date(iso);
-    return d.toLocaleDateString("ja-JP", {
+    return d.toLocaleDateString(dateLocale(), {
       year: "numeric",
       month: "short",
       day: "numeric",
@@ -69,7 +71,7 @@ export default function PresentationCard(props: PresentationCardProps) {
               props.onDelete(e);
             }}
           >
-            Delete
+            {t("deletePresentation")}
           </button>
         </div>
       </div>

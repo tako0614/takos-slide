@@ -19,10 +19,12 @@ import SlideCanvas from "../components/SlideCanvas";
 import SlidePanel from "../components/SlidePanel";
 import ShapeToolbar from "../components/ShapeToolbar";
 import PropertyPanel from "../components/PropertyPanel";
+import { useI18n } from "../i18n";
 
 export default function EditorPage() {
   const params = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { t } = useI18n();
 
   const [presentation, setPresentation] = createSignal<Presentation | null>(
     null,
@@ -95,7 +97,7 @@ export default function EditorPage() {
   };
 
   const handleInsertText = () => {
-    const el = createTextElement(330, 240);
+    const el = createTextElement(330, 240, t("defaultTextElement"));
     updateSlide((elements) => [...elements, el]);
     setSelectedElementId(el.id);
   };
@@ -109,7 +111,7 @@ export default function EditorPage() {
   };
 
   const handleInsertImage = () => {
-    const url = prompt("Enter image URL:");
+    const url = prompt(t("enterImageUrl"));
     if (!url) return;
     const el = createImageElement(url, 330, 170);
     updateSlide((elements) => [...elements, el]);
@@ -245,7 +247,7 @@ export default function EditorPage() {
   return (
     <Show
       when={presentation()}
-      fallback={<div class="p-8 text-gray-400">Loading...</div>}
+      fallback={<div class="p-8 text-gray-400">{t("loading")}</div>}
     >
       <div class="h-screen flex flex-col bg-gray-900">
         {/* Toolbar */}
@@ -314,7 +316,7 @@ export default function EditorPage() {
                     onClick={(e) => e.stopPropagation()}
                   >
                     <h3 class="text-sm font-medium text-gray-300 mb-2">
-                      Edit Text
+                      {t("editText")}
                     </h3>
                     <textarea
                       class="w-80 h-32 bg-gray-700 text-gray-100 px-3 py-2 rounded border border-gray-600 outline-none focus:border-blue-500 resize-none text-sm"
@@ -333,7 +335,7 @@ export default function EditorPage() {
                         class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-1.5 rounded text-sm transition-colors"
                         onClick={() => setEditingTextId(null)}
                       >
-                        Done
+                        {t("done")}
                       </button>
                     </div>
                   </div>
@@ -346,7 +348,10 @@ export default function EditorPage() {
         {/* Bottom bar */}
         <div class="h-7 bg-gray-800 border-t border-gray-700 flex items-center px-4 text-xs text-gray-500">
           <span>
-            Slide {selectedSlideIndex() + 1} of {presentation()!.slides.length}
+            {t("slideCount", {
+              current: selectedSlideIndex() + 1,
+              total: presentation()!.slides.length,
+            })}
           </span>
           <span class="mx-2">|</span>
           <button
@@ -354,7 +359,7 @@ export default function EditorPage() {
             class="hover:text-gray-300 transition-colors"
             onClick={() => navigate("/")}
           >
-            Back to list
+            {t("backToList")}
           </button>
         </div>
       </div>

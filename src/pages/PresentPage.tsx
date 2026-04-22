@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "@solidjs/router";
 import type { Presentation, SlideTransition } from "../types";
 import { getPresentation, loadPresentationsFromApi } from "../lib/storage";
 import { renderSlide } from "../lib/canvas-renderer";
+import { useI18n } from "../i18n";
 
 const SLIDE_W = 960;
 const SLIDE_H = 540;
@@ -10,6 +11,7 @@ const SLIDE_H = 540;
 export default function PresentPage() {
   const params = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { t } = useI18n();
 
   const [presentation, setPresentation] = createSignal<Presentation | null>(
     null,
@@ -230,7 +232,7 @@ export default function PresentPage() {
     >
       <Show
         when={presentation()}
-        fallback={<div class="text-gray-500">Loading...</div>}
+        fallback={<div class="text-gray-500">{t("loading")}</div>}
       >
         <div
           ref={wrapperRef}
@@ -247,7 +249,7 @@ export default function PresentPage() {
 
         {/* ESC hint */}
         <div class="fixed top-4 right-4 text-gray-700 text-xs opacity-0 hover:opacity-60 transition-opacity cursor-default">
-          ESC to exit
+          {t("escToExit")}
         </div>
       </Show>
     </div>
