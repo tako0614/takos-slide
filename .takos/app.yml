@@ -27,7 +27,7 @@ publish:
     title: Slide
     spec:
       description: Takos presentation editor
-      icon: S
+      icon: /icons/slide.svg
       category: office
       sortOrder: 30
   - name: slide-mcp
@@ -41,6 +41,7 @@ publish:
 
 compute:
   web:
+    icon: /icons/slide.svg
     readiness: /healthz
     env:
       MCP_AUTH_REQUIRED: "1"
