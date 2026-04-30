@@ -12,7 +12,7 @@ import {
   createImageElement,
   createShapeElement,
   createTextElement,
-  loadPresentationsFromApi,
+  loadPresentationFromApi,
   savePresentation,
 } from "../lib/storage";
 import SlideCanvas from "../components/SlideCanvas";
@@ -40,12 +40,8 @@ export default function EditorPage() {
   // Load presentation
   createEffect(() => {
     setPresentation(null);
-    void loadPresentationsFromApi()
-      .then((presentations) => {
-        const remote = presentations.find((entry) => entry.id === params.id);
-        if (remote) setPresentation(remote);
-        else navigate("/");
-      })
+    void loadPresentationFromApi(params.id)
+      .then((remote) => setPresentation(remote))
       .catch(() => navigate("/"));
   });
 
@@ -72,7 +68,10 @@ export default function EditorPage() {
 
   const persist = (pres: Presentation) => {
     setPresentation(pres);
-    savePresentation(pres);
+    const result = savePresentation(pres);
+    void result.remote.catch((error) => {
+      console.error("[takos-slide] Failed to save presentation", error);
+    });
   };
 
   const updateSlide = (
@@ -200,7 +199,8 @@ export default function EditorPage() {
   };
 
   const handlePresent = () => {
-    navigate(`/slide/${params.id}/present`);
+    const id = presentation()?.id ?? params.id;
+    navigate(`/slide/${id}/present`);
   };
 
   const handleEditText = (elementId: string) => {

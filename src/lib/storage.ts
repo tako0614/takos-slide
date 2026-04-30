@@ -1,13 +1,30 @@
 import type { Presentation, Slide, SlideElement } from "../types/index.ts";
+import { t } from "../i18n.ts";
 
 const STORAGE_KEY = "takos-slide-presentations";
 const API_PRESENTATIONS_PATH = "/api/presentations";
+
+export interface LocalSaveResult<T> {
+  value: T;
+  remote: Promise<unknown>;
+}
 
 function redirectToLogin(): void {
   const location = globalThis.location;
   if (!location) return;
   const returnTo = `${location.pathname}${location.search}${location.hash}`;
   location.href = `/api/auth/login?return_to=${encodeURIComponent(returnTo)}`;
+}
+
+function withCurrentSpaceId(path: string): string {
+  const query = globalThis.location
+    ? new URLSearchParams(globalThis.location.search)
+    : null;
+  const spaceId = query?.get("space_id") ?? query?.get("spaceId");
+  if (!spaceId) return path;
+  const url = new URL(path, globalThis.location.origin);
+  url.searchParams.set("space_id", spaceId);
+  return `${url.pathname}${url.search}`;
 }
 
 export function clearPresentationsCache(): void {
@@ -18,7 +35,7 @@ async function requestJson<T>(
   path: string,
   init?: RequestInit,
 ): Promise<T> {
-  const response = await fetch(path, {
+  const response = await fetch(withCurrentSpaceId(path), {
     ...init,
     headers: {
       "Content-Type": "application/json",
@@ -36,26 +53,33 @@ async function requestJson<T>(
   return await response.json() as T;
 }
 
-function syncPresentationToApi(presentation: Presentation): void {
-  void requestJson<Presentation>(
+function syncPresentationToApi(
+  presentation: Presentation,
+): Promise<Presentation> {
+  return requestJson<Presentation>(
     `${API_PRESENTATIONS_PATH}/${encodeURIComponent(presentation.id)}`,
     {
       method: "PUT",
       body: JSON.stringify(presentation),
     },
-  ).catch(() => undefined);
+  );
 }
 
-function deletePresentationFromApi(id: string): void {
-  void fetch(`${API_PRESENTATIONS_PATH}/${encodeURIComponent(id)}`, {
-    method: "DELETE",
-    credentials: "same-origin",
-  }).then((response) => {
-    if (response.status === 401) {
-      clearPresentationsCache();
-      redirectToLogin();
-    }
-  }).catch(() => undefined);
+async function deletePresentationFromApi(id: string): Promise<void> {
+  const response = await fetch(
+    withCurrentSpaceId(`${API_PRESENTATIONS_PATH}/${encodeURIComponent(id)}`),
+    {
+      method: "DELETE",
+      credentials: "same-origin",
+    },
+  );
+  if (response.status === 401) {
+    clearPresentationsCache();
+    redirectToLogin();
+  }
+  if (!response.ok) {
+    throw new Error(`Request failed: ${response.status}`);
+  }
 }
 
 export async function loadPresentationsFromApi(): Promise<Presentation[]> {
@@ -64,6 +88,22 @@ export async function loadPresentationsFromApi(): Promise<Presentation[]> {
   );
   savePresentations(presentations);
   return presentations;
+}
+
+export async function loadPresentationFromApi(
+  id: string,
+): Promise<Presentation> {
+  const presentation = await requestJson<Presentation>(
+    `${API_PRESENTATIONS_PATH}/${encodeURIComponent(id)}`,
+  );
+  const presentations = loadPresentations();
+  const index = presentations.findIndex((entry) =>
+    entry.id === presentation.id
+  );
+  if (index >= 0) presentations[index] = presentation;
+  else presentations.push(presentation);
+  savePresentations(presentations);
+  return presentation;
 }
 
 function generateId(): string {
@@ -103,7 +143,9 @@ export function createPresentation(title: string): Presentation {
   };
 }
 
-export function savePresentation(presentation: Presentation): Presentation[] {
+export function savePresentation(
+  presentation: Presentation,
+): LocalSaveResult<Presentation[]> {
   const presentations = loadPresentations();
   const index = presentations.findIndex((p) => p.id === presentation.id);
   const updated = {
@@ -116,15 +158,15 @@ export function savePresentation(presentation: Presentation): Presentation[] {
     presentations.push(updated);
   }
   savePresentations(presentations);
-  syncPresentationToApi(updated);
-  return presentations;
+  return { value: presentations, remote: syncPresentationToApi(updated) };
 }
 
-export function deletePresentation(id: string): Presentation[] {
+export function deletePresentation(
+  id: string,
+): LocalSaveResult<Presentation[]> {
   const presentations = loadPresentations().filter((p) => p.id !== id);
   savePresentations(presentations);
-  deletePresentationFromApi(id);
-  return presentations;
+  return { value: presentations, remote: deletePresentationFromApi(id) };
 }
 
 export function getPresentation(id: string): Presentation | undefined {
@@ -134,7 +176,7 @@ export function getPresentation(id: string): Presentation | undefined {
 export function createTextElement(
   x: number,
   y: number,
-  text = "Text",
+  text = t("defaultTextElement"),
 ): SlideElement {
   return {
     id: generateId(),

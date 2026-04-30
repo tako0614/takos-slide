@@ -150,9 +150,32 @@ export function createSlideAppFromEnv(env: SlideRuntimeEnv = denoEnv()) {
     "http://localhost:8787";
   const token = envValue(env, "TAKOS_STORAGE_ACCESS_TOKEN") ||
     requiredEnv(env, "TAKOS_ACCESS_TOKEN");
-  const spaceId = requiredEnv(env, "TAKOS_SPACE_ID");
-  const client = createTakosStorageClient(apiUrl, token, spaceId);
-  const store = createPresentationStore(client);
+  const defaultSpaceId = envValue(env, "TAKOS_SPACE_ID");
+  const stores = new Map<string, ReturnType<typeof createPresentationStore>>();
+  const storeForSpace = (spaceId: string) => {
+    let store = stores.get(spaceId);
+    if (!store) {
+      const client = createTakosStorageClient(apiUrl, token, spaceId);
+      store = createPresentationStore(client);
+      stores.set(spaceId, store);
+    }
+    return store;
+  };
+  const requestSpaceId = (c: Context): string | null =>
+    envValue(
+      {
+        value: c.req.query("space_id") ?? c.req.query("spaceId") ??
+          defaultSpaceId,
+      },
+      "value",
+    ) ?? null;
+  const storeForRequest = (
+    c: Context,
+  ): ReturnType<typeof createPresentationStore> | Response => {
+    const spaceId = requestSpaceId(c);
+    if (!spaceId) return c.json({ error: "space_id is required" }, 400);
+    return storeForSpace(spaceId);
+  };
   const app = new Hono();
 
   registerAuthRoutes(app, env);
@@ -167,6 +190,8 @@ export function createSlideAppFromEnv(env: SlideRuntimeEnv = denoEnv()) {
     await next();
   });
   app.get("/api/presentations", async (c) => {
+    const store = storeForRequest(c);
+    if (store instanceof Response) return store;
     const summaries = await store.list();
     const presentations = await Promise.all(
       summaries.map((entry) => store.get(entry.id)),
@@ -178,6 +203,8 @@ export function createSlideAppFromEnv(env: SlideRuntimeEnv = denoEnv()) {
     );
   });
   app.post("/api/presentations", async (c) => {
+    const store = storeForRequest(c);
+    if (store instanceof Response) return store;
     const body = await c.req.json<Partial<Presentation>>();
     if (body.id && body.title && body.slides) {
       return c.json(await store.replace(body as Presentation), 201);
@@ -188,17 +215,33 @@ export function createSlideAppFromEnv(env: SlideRuntimeEnv = denoEnv()) {
     );
   });
   app.get("/api/presentations/:id", async (c) => {
+    const store = storeForRequest(c);
+    if (store instanceof Response) return store;
     const presentation = await store.get(c.req.param("id"));
     return presentation
       ? c.json(presentation)
       : c.json({ error: "Presentation not found" }, 404);
   });
   app.put("/api/presentations/:id", async (c) => {
+    const store = storeForRequest(c);
+    if (store instanceof Response) return store;
     const body = await c.req.json<Presentation>();
-    return c.json(await store.replace({ ...body, id: c.req.param("id") }));
+    const id = c.req.param("id");
+    const current = await store.get(id);
+    return c.json(
+      await store.replace({ ...body, id: current?.id ?? body.id ?? id }),
+    );
   });
   app.delete("/api/presentations/:id", async (c) => {
+    const store = storeForRequest(c);
+    if (store instanceof Response) return store;
     return c.json({ deleted: await store.delete(c.req.param("id")) });
+  });
+
+  app.get("/files/:id", (c) => {
+    const url = new URL(c.req.url);
+    url.pathname = `/slide/${encodeURIComponent(c.req.param("id"))}`;
+    return c.redirect(`${url.pathname}${url.search}`, 302);
   });
 
   app.all("/mcp", async (c) => {
@@ -208,6 +251,8 @@ export function createSlideAppFromEnv(env: SlideRuntimeEnv = denoEnv()) {
       envFlagEnabled(env, "MCP_ALLOW_UNAUTHENTICATED"),
     );
     if (authResponse) return authResponse;
+    const store = storeForRequest(c);
+    if (store instanceof Response) return store;
 
     const transport = new WebStandardStreamableHTTPServerTransport({
       sessionIdGenerator: undefined,

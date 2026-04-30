@@ -1,26 +1,25 @@
 import { assert, assertEquals } from "@std/assert";
 import type { Presentation, Slide, SlideElement } from "../types/index.ts";
 
-// jsPDF may not be fully available in all test environments.
-// We attempt to import and skip gracefully if it fails.
-
 let exportPresentationToPdf:
   | ((presentation: Presentation) => Uint8Array)
   | null = null;
+let pdfExporterImportError: unknown;
 
 try {
   const mod = await import("../lib/pdf-exporter.ts");
   exportPresentationToPdf = mod.exportPresentationToPdf;
-} catch {
-  // jsPDF not available
+} catch (error) {
+  pdfExporterImportError = error;
 }
 
-function skipIfNoJsPdf(): boolean {
+function requirePdfExporter(): (presentation: Presentation) => Uint8Array {
   if (!exportPresentationToPdf) {
-    console.log("  [skipped] jsPDF not available");
-    return true;
+    throw new Error("PDF exporter failed to load", {
+      cause: pdfExporterImportError,
+    });
   }
-  return false;
+  return exportPresentationToPdf;
 }
 
 // ---------------------------------------------------------------------------
@@ -149,9 +148,9 @@ const PDF_MAGIC = new TextEncoder().encode("%PDF");
 // ---------------------------------------------------------------------------
 
 Deno.test("exportPresentationToPdf returns Uint8Array starting with PDF magic bytes", () => {
-  if (skipIfNoJsPdf()) return;
+  const exportPdf = requirePdfExporter();
   const pres = makePresentation([makeSlide([makeTextElement()])]);
-  const result = exportPresentationToPdf!(pres);
+  const result = exportPdf(pres);
   assert(result instanceof Uint8Array, "Should return Uint8Array");
   assert(result.length > 4, "PDF should not be empty");
   const header = result.slice(0, 4);
@@ -159,29 +158,29 @@ Deno.test("exportPresentationToPdf returns Uint8Array starting with PDF magic by
 });
 
 Deno.test("exportPresentationToPdf handles empty slide (no elements)", () => {
-  if (skipIfNoJsPdf()) return;
+  const exportPdf = requirePdfExporter();
   const pres = makePresentation([makeSlide()]);
-  const result = exportPresentationToPdf!(pres);
+  const result = exportPdf(pres);
   assert(result.length > 0);
   const header = result.slice(0, 4);
   assertEquals([...header], [...PDF_MAGIC]);
 });
 
 Deno.test("exportPresentationToPdf handles multiple slides", () => {
-  if (skipIfNoJsPdf()) return;
+  const exportPdf = requirePdfExporter();
   const pres = makePresentation([
     makeSlide([makeTextElement({ id: "e1", text: "Slide 1" })]),
     makeSlide([makeTextElement({ id: "e2", text: "Slide 2" })]),
     makeSlide([makeTextElement({ id: "e3", text: "Slide 3" })]),
   ]);
-  const result = exportPresentationToPdf!(pres);
+  const result = exportPdf(pres);
   assert(result.length > 0);
   const header = result.slice(0, 4);
   assertEquals([...header], [...PDF_MAGIC]);
 });
 
 Deno.test("exportPresentationToPdf handles shape element", () => {
-  if (skipIfNoJsPdf()) return;
+  const exportPdf = requirePdfExporter();
   const shapeEl: SlideElement = {
     id: "shape-1",
     type: "shape",
@@ -196,12 +195,12 @@ Deno.test("exportPresentationToPdf handles shape element", () => {
     strokeWidth: 2,
   };
   const pres = makePresentation([makeSlide([shapeEl])]);
-  const result = exportPresentationToPdf!(pres);
+  const result = exportPdf(pres);
   assert(result.length > 0);
 });
 
 Deno.test("exportPresentationToPdf handles image placeholder element", () => {
-  if (skipIfNoJsPdf()) return;
+  const exportPdf = requirePdfExporter();
   const imgEl: SlideElement = {
     id: "img-1",
     type: "image",
@@ -213,27 +212,27 @@ Deno.test("exportPresentationToPdf handles image placeholder element", () => {
     imageUrl: "https://example.com/image.png",
   };
   const pres = makePresentation([makeSlide([imgEl])]);
-  const result = exportPresentationToPdf!(pres);
+  const result = exportPdf(pres);
   assert(result.length > 0);
 });
 
 Deno.test("exportPresentationToPdf handles bold italic text", () => {
-  if (skipIfNoJsPdf()) return;
+  const exportPdf = requirePdfExporter();
   const el = makeTextElement({ bold: true, italic: true, text: "Bold Italic" });
   const pres = makePresentation([makeSlide([el])]);
-  const result = exportPresentationToPdf!(pres);
+  const result = exportPdf(pres);
   assert(result.length > 0);
 });
 
 Deno.test("exportPresentationToPdf handles colored background", () => {
-  if (skipIfNoJsPdf()) return;
+  const exportPdf = requirePdfExporter();
   const slide: Slide = {
     id: "s1",
     elements: [makeTextElement()],
     background: "#1e3a5f",
   };
   const pres = makePresentation([slide]);
-  const result = exportPresentationToPdf!(pres);
+  const result = exportPdf(pres);
   assert(result.length > 0);
   const header = result.slice(0, 4);
   assertEquals([...header], [...PDF_MAGIC]);

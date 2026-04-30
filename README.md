@@ -46,21 +46,37 @@ canvas renderer can be loaded.
 
 ### Environment Variables
 
-| Variable                    | Description                                      | Default                 |
-| --------------------------- | ------------------------------------------------ | ----------------------- |
-| `TAKOS_API_URL`             | Takos platform API URL                           | `http://localhost:8787` |
-| `TAKOS_ACCESS_TOKEN`        | Access token for storage API                     | (empty)                 |
-| `TAKOS_SPACE_ID`            | Storage space ID                                 | (required)              |
-| `PORT`                      | MCP server port                                  | `3003`                  |
-| `MCP_AUTH_TOKEN`            | Bearer token for `/mcp`                          | managed auto-secret     |
-| `MCP_ALLOW_UNAUTHENTICATED` | Set `1` to allow `/mcp` without a bearer token   | `0`                     |
-| `TAKOS_NATIVE_RENDERING`    | Set `1` to enable native canvas screenshot tools | runtime-dependent       |
+| Variable                     | Description                                            | Default                 |
+| ---------------------------- | ------------------------------------------------------ | ----------------------- |
+| `TAKOS_STORAGE_API_URL`      | Takos Storage API URL                                  | `http://localhost:8787` |
+| `TAKOS_STORAGE_ACCESS_TOKEN` | Access token for storage API                           | (required)              |
+| `TAKOS_SPACE_ID`             | Default storage space; request `space_id` overrides it | (optional)              |
+| `APP_AUTH_REQUIRED`          | Set `1` to require app session auth                    | `0`                     |
+| `APP_SESSION_SECRET`         | Secret for app session cookies                         | managed generated       |
+| `OAUTH_CLIENT_ID`            | Takos OAuth client ID                                  | managed injected        |
+| `OAUTH_CLIENT_SECRET`        | Takos OAuth client secret                              | managed injected        |
+| `OAUTH_ISSUER_URL`           | Takos OAuth issuer URL                                 | managed injected        |
+| `OAUTH_TOKEN_URL`            | Takos OAuth token endpoint                             | managed injected        |
+| `OAUTH_USERINFO_URL`         | Takos OAuth userinfo endpoint                          | managed injected        |
+| `PORT`                       | MCP server port                                        | `3003`                  |
+| `MCP_AUTH_TOKEN`             | Bearer token for `/mcp`                                | managed auto-secret     |
+| `MCP_ALLOW_UNAUTHENTICATED`  | Set `1` to allow `/mcp` without a bearer token         | `0`                     |
+| `TAKOS_NATIVE_RENDERING`     | Set `1` to enable native canvas screenshot tools       | runtime-dependent       |
 
 In managed Takos deploys, `.takos/app.yml` publishes `slide-mcp` with
-`spec.authSecretRef: MCP_AUTH_TOKEN`. Takos generates the `MCP_AUTH_TOKEN`
-service secret env when it is missing, and MCP clients resolve that token from
-the owner service. Local development can opt into unauthenticated `/mcp` access
-with `MCP_ALLOW_UNAUTHENTICATED=true` when no token is configured.
+`auth.bearer.secretRef: MCP_AUTH_TOKEN`, injects storage credentials as
+`TAKOS_STORAGE_API_URL` / `TAKOS_STORAGE_ACCESS_TOKEN`, injects the Takos OAuth
+client env, and generates `APP_SESSION_SECRET`. Takos generates the
+`MCP_AUTH_TOKEN` service secret env when it is missing, and MCP clients resolve
+that token from the owner service. Local development can opt into
+unauthenticated `/mcp` access with `MCP_ALLOW_UNAUTHENTICATED=true` when no
+token is configured.
+
+The file handler opens `/files/:id` and the app reads/writes storage through the
+`space_id` or `spaceId` request query parameter when present. App-created
+presentations use `.takosslide` with `application/vnd.takos.slide+json`;
+existing `takos-slide/*.json` files remain readable and keep the same internal
+JSON layout.
 
 ## Available MCP Tools
 

@@ -1,8 +1,9 @@
 /**
  * PresentationStore backed by the takos platform storage API.
  *
- * Each presentation is stored as a JSON file under a `/takos-slide/` folder:
- *   - File name: `{id}.json`
+ * Each presentation is stored under a `/takos-slide/` folder:
+ *   - Current file name: `{id}.takosslide`
+ *   - Legacy file name: `{id}.json`
  *   - Content: full Presentation object serialised as JSON
  *
  * The store keeps an in-memory cache that is hydrated on first access
@@ -20,6 +21,9 @@ import { exportPresentationToPdf } from "./lib/pdf-exporter.ts";
 import { BUILT_IN_TEMPLATES, getTemplate } from "./lib/templates.ts";
 
 const FOLDER_NAME = "takos-slide";
+const FILE_EXTENSION = ".takosslide";
+const LEGACY_FILE_EXTENSION = ".json";
+const MIME_TYPE = "application/vnd.takos.slide+json";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -394,6 +398,33 @@ export function createPresentationStore(
 
   // -- internal helpers ----------------------------------------------------
 
+  function findEntry(
+    idOrFileId: string,
+  ): { p: Presentation; fileId: string } | undefined {
+    return cache.get(idOrFileId) ??
+      [...cache.values()].find((entry) => entry.fileId === idOrFileId);
+  }
+
+  function isSupportedFile(file: { name: string; mimeType?: string | null }) {
+    return file.name.endsWith(FILE_EXTENSION) ||
+      file.name.endsWith(LEGACY_FILE_EXTENSION) ||
+      file.mimeType === MIME_TYPE;
+  }
+
+  async function loadFile(
+    fileId: string,
+  ): Promise<{ p: Presentation; fileId: string } | undefined> {
+    const file = await client.get(fileId);
+    if (!file || file.type !== "file" || !isSupportedFile(file)) {
+      return undefined;
+    }
+    const raw = await client.getContent(file.id);
+    const p = JSON.parse(raw) as Presentation;
+    const entry = { p, fileId: file.id };
+    cache.set(p.id, entry);
+    return entry;
+  }
+
   async function ensureInitialized(): Promise<void> {
     if (initialized) return;
 
@@ -412,11 +443,9 @@ export function createPresentationStore(
     // Load all presentation files
     const allFiles = await client.list(FOLDER_NAME);
     for (const file of allFiles) {
-      if (file.type !== "file" || !file.name.endsWith(".json")) continue;
+      if (file.type !== "file" || !isSupportedFile(file)) continue;
       try {
-        const raw = await client.getContent(file.id);
-        const p = JSON.parse(raw) as Presentation;
-        cache.set(p.id, { p, fileId: file.id });
+        await loadFile(file.id);
       } catch {
         console.warn(
           `[takos-slide] Skipping unreadable file: ${file.name}`,
@@ -428,16 +457,16 @@ export function createPresentationStore(
   }
 
   async function persist(id: string): Promise<void> {
-    const entry = cache.get(id);
+    const entry = findEntry(id);
     if (!entry) return;
-    await client.putContent(entry.fileId, JSON.stringify(entry.p));
+    await client.putContent(entry.fileId, JSON.stringify(entry.p), MIME_TYPE);
   }
 
   async function mustGet(
     id: string,
   ): Promise<{ p: Presentation; fileId: string }> {
     await ensureInitialized();
-    const entry = cache.get(id);
+    const entry = findEntry(id);
     if (!entry) throw new Error(`Presentation not found: ${id}`);
     return entry;
   }
@@ -488,47 +517,53 @@ export function createPresentationStore(
         updatedAt: ts,
       };
       const file = await client.create(
-        `${p.id}.json`,
+        `${p.id}${FILE_EXTENSION}`,
         folderId ?? undefined,
+        { content: JSON.stringify(p), mimeType: MIME_TYPE },
       );
-      await client.putContent(file.id, JSON.stringify(p));
       cache.set(p.id, { p, fileId: file.id });
       return p;
     },
 
     async get(id: string) {
       await ensureInitialized();
-      return cache.get(id)?.p;
+      const cached = findEntry(id);
+      if (cached) return cached.p;
+      return (await loadFile(id))?.p;
     },
 
     async replace(presentation: Presentation) {
       await ensureInitialized();
-      const current = cache.get(presentation.id);
+      const current = findEntry(presentation.id);
       const next = {
         ...presentation,
         updatedAt: presentation.updatedAt || now(),
       };
       if (current) {
         current.p = next;
-        await client.putContent(current.fileId, JSON.stringify(next));
+        await client.putContent(
+          current.fileId,
+          JSON.stringify(next),
+          MIME_TYPE,
+        );
         return next;
       }
 
       const file = await client.create(
-        `${next.id}.json`,
+        `${next.id}${FILE_EXTENSION}`,
         folderId ?? undefined,
+        { content: JSON.stringify(next), mimeType: MIME_TYPE },
       );
-      await client.putContent(file.id, JSON.stringify(next));
       cache.set(next.id, { p: next, fileId: file.id });
       return next;
     },
 
     async delete(id: string) {
       await ensureInitialized();
-      const entry = cache.get(id);
+      const entry = findEntry(id);
       if (!entry) return false;
       await client.delete(entry.fileId);
-      cache.delete(id);
+      cache.delete(entry.p.id);
       return true;
     },
 

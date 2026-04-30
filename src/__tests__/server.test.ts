@@ -1,4 +1,4 @@
-import { assertEquals } from "@std/assert";
+import { assert, assertEquals } from "@std/assert";
 import {
   createSlideAppFromEnv,
   SLIDE_MAX_MCP_REQUEST_BYTES,
@@ -100,6 +100,123 @@ Deno.test("health endpoint allows explicit unauthenticated access when configure
 
   assertEquals(res.status, 200);
   assertEquals(await res.json(), { status: "ok" });
+});
+
+Deno.test("startup does not require TAKOS_SPACE_ID", async () => {
+  const app = createSlideAppFromEnv({
+    ...env,
+    TAKOS_SPACE_ID: undefined,
+  });
+  const res = await app.request("/health");
+
+  assertEquals(res.status, 200);
+  assertEquals(await res.json(), { status: "ok" });
+});
+
+Deno.test("file handler route redirects to presentation editor route", async () => {
+  const app = createSlideAppFromEnv(env);
+  const res = await app.request("/files/file-1?space_id=space-q");
+
+  assertEquals(res.status, 302);
+  assertEquals(res.headers.get("location"), "/slide/file-1?space_id=space-q");
+});
+
+Deno.test("presentation API opens and saves advertised file by storage id in request space", async () => {
+  const originalFetch = globalThis.fetch;
+  const calls: { method: string; url: string; body?: string }[] = [];
+  const now = "2026-04-30T00:00:00.000Z";
+  const presentation = {
+    id: "pres-1",
+    title: "Deck",
+    slides: [{ id: "slide-1", elements: [], background: "#ffffff" }],
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  globalThis.fetch = ((input: string | URL | Request, init?: RequestInit) => {
+    const request = input instanceof Request ? input : null;
+    const url = request?.url ?? String(input);
+    const method = init?.method ?? request?.method ?? "GET";
+    calls.push({
+      method,
+      url,
+      body: typeof init?.body === "string" ? init.body : undefined,
+    });
+
+    if (url.endsWith("/api/spaces/space-q/storage")) {
+      return Promise.resolve(Response.json({
+        files: [{
+          id: "folder-1",
+          name: "takos-slide",
+          path: "takos-slide",
+          type: "folder",
+          created_at: now,
+          updated_at: now,
+        }],
+      }));
+    }
+    if (url.endsWith("/api/spaces/space-q/storage?path=takos-slide")) {
+      return Promise.resolve(Response.json({ files: [] }));
+    }
+    if (url.endsWith("/api/spaces/space-q/storage/file-1")) {
+      return Promise.resolve(Response.json({
+        file: {
+          id: "file-1",
+          name: "Deck.takosslide",
+          type: "file",
+          mime_type: "application/vnd.takos.slide+json",
+          created_at: now,
+          updated_at: now,
+        },
+      }));
+    }
+    if (url.endsWith("/api/spaces/space-q/storage/file-1/content")) {
+      if (method === "PUT") return Promise.resolve(Response.json({ file: {} }));
+      return Promise.resolve(
+        Response.json({ content: JSON.stringify(presentation) }),
+      );
+    }
+    return Promise.resolve(Response.json({ error: "unexpected" }, {
+      status: 500,
+    }));
+  }) as typeof fetch;
+
+  try {
+    const app = createSlideAppFromEnv({
+      ...env,
+      TAKOS_SPACE_ID: undefined,
+    });
+    const getRes = await app.request(
+      "/api/presentations/file-1?space_id=space-q",
+    );
+    assertEquals(getRes.status, 200);
+    assertEquals(await getRes.json(), presentation);
+
+    const putRes = await app.request(
+      new Request(
+        "http://localhost/api/presentations/file-1?space_id=space-q",
+        {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ ...presentation, title: "Updated" }),
+        },
+      ),
+    );
+    assertEquals(putRes.status, 200);
+    assertEquals((await putRes.json()).id, "pres-1");
+
+    const saveCall = calls.find((call) =>
+      call.method === "PUT" &&
+      call.url.endsWith("/api/spaces/space-q/storage/file-1/content")
+    );
+    assert(saveCall);
+    assertEquals(
+      JSON.parse(saveCall.body ?? "{}").mime_type,
+      "application/vnd.takos.slide+json",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 Deno.test("health endpoint fails when token is missing", async () => {

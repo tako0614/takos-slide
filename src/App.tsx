@@ -9,6 +9,7 @@ export default function App() {
       <Route path="/" component={PresentationListPage} />
       <Route path="/slide/:id" component={EditorPage} />
       <Route path="/slide/:id/present" component={PresentPage} />
+      <Route path="/files/:id" component={EditorPage} />
     </>
   );
 }

@@ -28,8 +28,11 @@ export default function PresentationListPage() {
 
   const handleCreate = () => {
     const pres = createPresentation(newTitle());
-    const all = savePresentation(pres);
-    setPresentations(all);
+    const result = savePresentation(pres);
+    setPresentations(result.value);
+    void result.remote.catch((error) => {
+      console.error("[takos-slide] Failed to save presentation", error);
+    });
     setShowNewDialog(false);
     setNewTitle(t("untitledPresentation"));
     navigate(`/slide/${pres.id}`);
@@ -42,8 +45,11 @@ export default function PresentationListPage() {
 
   const handleDelete = (id: string) => {
     if (!confirm(t("deletePresentationConfirm"))) return;
-    const updated = deletePresentation(id);
-    setPresentations(updated);
+    const result = deletePresentation(id);
+    setPresentations(result.value);
+    void result.remote.catch((error) => {
+      console.error("[takos-slide] Failed to delete presentation", error);
+    });
   };
 
   return (

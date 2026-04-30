@@ -3,27 +3,44 @@ version: "0.1.0"
 
 publish:
   - name: slide-ui
-    publisher: web
-    type: UiSurface
-    outputs:
-      url:
-        route: /
-    title: Slide
-    spec:
+    type: takos.ui-surface.v1
+    display:
+      title: Slide
       description: Takos presentation editor
       icon: /icons/slide.svg
       category: office
       sortOrder: 30
-  - name: slide-mcp
-    publisher: web
-    type: McpServer
     outputs:
       url:
-        route: /mcp
-    title: Slide MCP
+        kind: url
+        routeRef: ui
+  - name: slide-mcp
+    type: takos.mcp-server.v1
+    display:
+      title: Slide MCP
+    outputs:
+      url:
+        kind: url
+        routeRef: mcp
+    auth:
+      bearer:
+        secretRef: MCP_AUTH_TOKEN
     spec:
       transport: streamable-http
-      authSecretRef: MCP_AUTH_TOKEN
+  - name: slide-file-handler
+    type: takos.file-handler.v1
+    display:
+      title: Slide
+      description: Open Takos presentation files
+    outputs:
+      url:
+        kind: url
+        routeRef: file-open
+    spec:
+      mimeTypes:
+        - application/vnd.takos.slide+json
+      extensions:
+        - .takosslide
 
 compute:
   web:
@@ -72,9 +89,15 @@ resources:
     to: web
 
 routes:
-  - target: web
+  - id: ui
+    target: web
     path: /
-  - target: web
+  - id: api
+    target: web
     path: /api
-  - target: web
+  - id: mcp
+    target: web
     path: /mcp
+  - id: file-open
+    target: web
+    path: /files/:id
